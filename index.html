@@ -6,53 +6,52 @@
   <title>Miary Podaży Pieniądza w Polsce</title>
   <!-- Google Font -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-  <!-- Chart.js -->
+  <!-- Chart.js & Date Adapter -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/dist/date-fns.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
   <style>
     body { font-family: 'Inter', sans-serif; background: #f5f5f5; margin: 0; padding: 0; }
-    header { background: #fff; padding: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-    .container { max-width: 1200px; margin: auto; padding: 1rem; }
-    .chart-container { position: relative; background: #fff; padding: 1rem; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-    .controls { display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem; }
-    select, button { padding: 0.5rem 1rem; border-radius: 8px; border: 1px solid #ddd; background: #fff; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.05); font-size: 1rem; }
-    button.active { background: #007bff; color: #fff; border-color: #007bff; }
+    header { background: #fff; padding: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); position: sticky; top: 0; z-index: 10; }
+    .wrapper { display: flex; height: calc(100vh - 68px); }
+    #sidebar { width: 280px; background: #fff; padding: 1rem; box-shadow: 2px 0 4px rgba(0,0,0,0.1); overflow-y: auto; }
+    #sidebar ul { list-style: none; padding: 0; margin: 0; }
+    #sidebar li { margin: 0.5rem 0; cursor: pointer; border-radius: 6px; padding: 0.5rem; }
+    #sidebar li:hover, #sidebar li.active { background: #e6f0ff; }
+    #main { flex: 1; padding: 1rem; display: flex; flex-direction: column; }
+    .controls { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+    .controls button { flex: 1; padding: 0.5rem; border-radius: 8px; border: 1px solid #ddd; background: #fff; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.05); font-size: 0.9rem; }
+    .controls button.active { background: #007bff; color: #fff; border-color: #007bff; }
+    .chart-container { flex: 1; background: #fff; padding: 1rem; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
     h1 { margin: 0; font-weight: 600; font-size: 1.5rem; }
   </style>
 </head>
 <body>
   <header>
-    <div class="container">
-      <h1>Miary Podaży Pieniądza w Polsce</h1>
-    </div>
+    <h1>Miary Podaży Pieniądza w Polsce</h1>
   </header>
-  <main class="container">
-    <div class="controls">
-      <select id="categorySelect"></select>
-      <div id="rangeButtons">
+  <div class="wrapper">
+    <aside id="sidebar">
+      <ul id="treeMenu"></ul>
+    </aside>
+    <main id="main">
+      <div class="controls" id="rangeButtons">
         <button data-range="YTD">Od początku roku</button>
         <button data-range="1Y">1 rok</button>
         <button data-range="5Y">5 lat</button>
         <button data-range="10Y">10 lat</button>
-        <button data-range="ALL">Cały okres</button>
+        <button data-range="ALL" class="active">Cały okres</button>
       </div>
-    </div>
-    <div class="chart-container">
-      <canvas id="moneyChart"></canvas>
-    </div>
-  </main>
+      <div class="chart-container">
+        <canvas id="moneyChart"></canvas>
+      </div>
+    </main>
+  </div>
   <script>
-    let rawData;
-    let chart;
+    let rawData, chart;
     async function loadData() {
       rawData = await fetch('am_data.json').then(res => res.json());
-      const select = document.getElementById('categorySelect');
-      rawData.columns.forEach((c, i) => {
-        const opt = document.createElement('option');
-        opt.value = i;
-        opt.textContent = c.column;
-        select.appendChild(opt);
-      });
-      select.addEventListener('change', updateChart);
+      buildTree(rawData.columns);
       document.querySelectorAll('#rangeButtons button').forEach(btn => {
         btn.addEventListener('click', () => {
           document.querySelectorAll('#rangeButtons button').forEach(b => b.classList.remove('active'));
@@ -63,6 +62,23 @@
       createChart();
     }
 
+    function buildTree(items) {
+      const tree = document.getElementById('treeMenu');
+      items.forEach((item, idx) => {
+        const li = document.createElement('li');
+        li.textContent = item.column;
+        li.dataset.index = idx;
+        li.addEventListener('click', () => {
+          document.querySelectorAll('#treeMenu li').forEach(el => el.classList.remove('active'));
+          li.classList.add('active');
+          updateChart();
+        });
+        tree.appendChild(li);
+      });
+      // Activate first
+      tree.querySelector('li').classList.add('active');
+    }
+
     function createChart() {
       const ctx = document.getElementById('moneyChart').getContext('2d');
       chart = new Chart(ctx, {
@@ -70,6 +86,7 @@
         data: { labels: [], datasets: [{ label: '', data: [], borderWidth: 2, tension: 0.3 }] },
         options: {
           responsive: true,
+          animation: { duration: 300 },
           interaction: { mode: 'index', intersect: false },
           plugins: { tooltip: { enabled: true } },
           scales: { x: { type: 'time', time: { unit: 'month' }} }
@@ -79,13 +96,12 @@
     }
 
     function updateChart() {
-      const sel = document.getElementById('categorySelect');
-      const col = rawData.columns[sel.value];
+      const activeItem = document.querySelector('#treeMenu li.active');
+      const col = rawData.columns[activeItem.dataset.index];
       const now = new Date();
       let startDate;
-      const active = document.querySelector('#rangeButtons button.active');
-      const range = active ? active.dataset.range : 'ALL';
-      switch (range) {
+      const activeRange = document.querySelector('#rangeButtons button.active').dataset.range;
+      switch (activeRange) {
         case 'YTD': startDate = new Date(now.getFullYear(), 0, 1); break;
         case '1Y': startDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()); break;
         case '5Y': startDate = new Date(now.getFullYear() - 5, now.getMonth(), now.getDate()); break;
