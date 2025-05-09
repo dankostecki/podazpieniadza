@@ -62,8 +62,8 @@
       buildTree();
       setupControls();
       createChart();
-      // Default: click M3 node
-      setTimeout(() => { document.querySelector('[data-index="22"]').click(); }, 100);
+      // default: show M3
+      setTimeout(() => document.querySelector('[data-index="22"]').click(), 100);
     }
 
     function setupControls() {
@@ -76,10 +76,8 @@
       });
       document.querySelector('button[data-range="ALL"]').classList.add('active');
       document.getElementById('stackToggle').addEventListener('change', () => {
-        chart.options.scales = chart.options.scales || {};
-        chart.options.scales.y = { stacked: !!document.getElementById('stackToggle').checked };
-        // set fill for stacked
-        chart.data.datasets.forEach(ds => ds.fill = document.getElementById('stackToggle').checked ? 'origin' : false);
+        chart.options.scales.y.stacked = document.getElementById('stackToggle').checked;
+        chart.data.datasets.forEach(ds => ds.stack = document.getElementById('stackToggle').checked ? 'stack1' : undefined);
         chart.update();
       });
     }
@@ -88,50 +86,46 @@
       const cols = rawData.columns;
       const treeData = [
         { name: 'Pieniądz M3', index: 22, children: [
-            { name: 'Dodatkowe komponenty M3', index: null, children: [
-              { name: cols[19].column, index: 19 },
-              { name: cols[20].column, index: 20 },
-              { name: cols[21].column, index: 21 }
+          { name: 'Dodatkowe komponenty M3', index: null, children: [
+            { name: cols[19].column, index: 19 },
+            { name: cols[20].column, index: 20 },
+            { name: cols[21].column, index: 21 }
+          ]},
+          { name: 'Pieniądz M2', index: 18, children: [
+            { name: 'Depozyty do 2 lat', index: 11, children: [
+              { name: cols[12].column, index: 12 },
+              { name: cols[13].column, index: 13 },
+              { name: cols[14].column, index: 14 },
+              { name: cols[15].column, index: 15 },
+              { name: cols[16].column, index: 16 },
+              { name: cols[17].column, index: 17 }
             ]},
-            { name: 'Pieniądz M2', index: 18, children: [
-              { name: 'Depozyty do 2 lat', index: 11, children: [
-                { name: cols[12].column, index: 12 },
-                { name: cols[13].column, index: 13 },
-                { name: cols[14].column, index: 14 },
-                { name: cols[15].column, index: 15 },
-                { name: cols[16].column, index: 16 },
-                { name: cols[17].column, index: 17 }
+            { name: 'Pieniądz M1', index: 10, children: [
+              { name: 'Depozyty bieżące', index: 3, children: [
+                { name: cols[4].column, index: 4 },
+                { name: cols[5].column, index: 5 },
+                { name: cols[6].column, index: 6 },
+                { name: cols[7].column, index: 7 },
+                { name: cols[8].column, index: 8 },
+                { name: cols[9].column, index: 9 }
               ]},
-              { name: 'Pieniądz M1', index: 10, children: [
-                { name: 'Depozyty bieżące', index: 3, children: [
-                  { name: cols[4].column, index: 4 },
-                  { name: cols[5].column, index: 5 },
-                  { name: cols[6].column, index: 6 },
-                  { name: cols[7].column, index: 7 },
-                  { name: cols[8].column, index: 8 },
-                  { name: cols[9].column, index: 9 }
-                ]},
-                { name: cols[0].column, index: 0 }
-              ]}
+              { name: cols[0].column, index: 0 }
             ]}
           ]}
+        ]}
       ];
 
       function render(nodes, parent) {
         nodes.forEach(node => {
           const li = document.createElement('li');
-          const div = document.createElement('div');
-          div.classList.add('node');
-          // Checkbox for selectable nodes
+          const div = document.createElement('div'); div.classList.add('node');
           if (node.index !== null) {
-            const cb = document.createElement('input');
-            cb.type = 'checkbox'; cb.classList.add('checkbox'); cb.dataset.index = node.index;
+            const cb = document.createElement('input'); cb.type = 'checkbox'; cb.classList.add('checkbox'); cb.dataset.index = node.index;
             cb.addEventListener('click', e => e.stopPropagation());
             cb.addEventListener('change', updateOverlay);
             div.appendChild(cb);
           }
-          const span = document.createElement('span'); span.textContent = node.name;
-          div.appendChild(span);
+          const span = document.createElement('span'); span.textContent = node.name; div.appendChild(span);
           div.addEventListener('click', e => {
             e.stopPropagation();
             document.querySelectorAll('.node').forEach(n => n.classList.remove('active'));
@@ -140,8 +134,7 @@
           });
           li.appendChild(div); parent.appendChild(li);
           if (node.children) {
-            const ul = document.createElement('ul'); li.appendChild(ul);
-            render(node.children, ul);
+            const ul = document.createElement('ul'); li.appendChild(ul); render(node.children, ul);
           }
         });
       }
@@ -152,7 +145,9 @@
       const ctx = document.getElementById('moneyChart').getContext('2d');
       chart = new Chart(ctx, {
         type: 'line', data: { datasets: [] }, options: {
-          responsive: true, interaction: { mode: 'index', intersect: false }, plugins: { tooltip: { enabled: true } },
+          responsive: true,
+          interaction: { mode: 'index', intersect: false },
+          plugins: { tooltip: { enabled: true } },
           scales: { x: { type: 'time', time: { unit: 'month' }}, y: { stacked: false }}
         }
       });
@@ -176,7 +171,15 @@
       const active = document.querySelector('.node.active');
       if (!active || !active.querySelector('input')) return;
       const idx = parseInt(active.querySelector('input').dataset.index, 10);
-      chart.data.datasets = [{ label: rawData.columns[idx].column, data: getFilteredData(idx), borderWidth: 2, tension: 0.3, fill: false }];
+      const fillOpt = document.getElementById('stackToggle').checked;
+      chart.data.datasets = [{
+        label: rawData.columns[idx].column,
+        data: getFilteredData(idx),
+        borderWidth: 2,
+        tension: 0.3,
+        fill: fillOpt ? 'origin' : false,
+        stack: fillOpt ? 'stack1' : undefined
+      }];
       // clear overlays
       document.querySelectorAll('#treeMenu input[type="checkbox"]').forEach(cb => cb.checked = false);
       chart.update();
@@ -185,15 +188,14 @@
     function updateOverlay() {
       const datasets = [];
       const active = document.querySelector('.node.active');
+      const fillOpt = document.getElementById('stackToggle').checked;
       if (active && active.querySelector('input')) {
         const idx0 = parseInt(active.querySelector('input').dataset.index, 10);
-        datasets.push({ label: rawData.columns[idx0].column, data: getFilteredData(idx0), borderWidth: 2, tension: 0.3, fill: document.getElementById('stackToggle').checked ? 'origin' : false });
+        datasets.push({ label: rawData.columns[idx0].column, data: getFilteredData(idx0), borderWidth: 2, tension: 0.3, fill: fillOpt ? 'origin' : false, stack: fillOpt ? 'stack1' : undefined });
       }
       document.querySelectorAll('#treeMenu input[type="checkbox"]:checked').forEach(cb => {
         const idx = parseInt(cb.dataset.index, 10);
-        if (!active || idx !== parseInt(active.querySelector('input').dataset.index,10)) {
-          datasets.push({ label: rawData.columns[idx].column, data: getFilteredData(idx), borderWidth: 2, tension: 0.3, fill: document.getElementById('stackToggle').checked ? 'origin' : false });
-        }
+        datasets.push({ label: rawData.columns[idx].column, data: getFilteredData(idx), borderWidth: 2, tension: 0.3, fill: fillOpt ? 'origin' : false, stack: fillOpt ? 'stack1' : undefined });
       });
       chart.data.datasets = datasets;
       chart.update();
