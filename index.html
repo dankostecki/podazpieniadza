@@ -2,114 +2,214 @@
 <html lang="pl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Miary Podaży Pieniądza w Polsce</title>
-  <!-- Google Font -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-  <!-- Chart.js -->
+  <link rel="stylesheet" href="style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/dist/date-fns.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
-  <style>
-    body { font-family: 'Inter', sans-serif; background: #f5f5f5; margin: 0; padding: 0; }
-    header { background: #fff; padding: 0.5rem 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); position: sticky; top: 0; z-index: 10; }
-    header h1 { margin: 0; font-size: 1.2rem; }
-    .wrapper { display: flex; height: calc(100vh - 130px); /* uwzględnia header, controls i footer */ }
-    #sidebar { width: 300px; background: #fff; padding: 1rem; box-shadow: 2px 0 4px rgba(0,0,0,0.1); overflow-y: auto; }
-    #sidebar ul { list-style: none; padding: 0; margin: 0; }
-    #sidebar li { margin: 0.3rem 0; }
-    #sidebar .node { cursor: pointer; padding: 0.4rem 0.6rem; border-radius: 6px; }
-    #sidebar .node:hover { background: #e6f0ff; }
-    #sidebar .node.active { font-weight: 600; background: #ddeeff; }
-    #sidebar ul ul { padding-left: 1rem; }
-    #main { flex: 1; display: flex; flex-direction: column; }
-    .controls { display: flex; background: #f0f0f0; padding: 0.5rem; align-items: center; }
-    .controls button { flex: 1; margin: 0 0.25rem; padding: 0.5rem; border: none; border-radius: 6px; background: #fff; cursor: pointer; font-size: 0.9rem; }
-    .controls button.active { background: #007bff; color: #fff; }
-    .controls label { margin: 0 0.5rem; font-size: 0.9rem; cursor: pointer; display: flex; align-items: center; }
-    .controls input[type="checkbox"] { margin-left: 0.3rem; }
-    .chart-container { flex: 1; padding: 0.5rem; position: relative; max-height: calc(100% - 10px); }
-    canvas { background: #fff; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 100% !important; height: 100% !important; }
-    #changeInfo { position: absolute; top: 10px; right: 20px; background: rgba(255,255,255,0.8); padding: 0.3rem 0.6rem; border-radius: 4px; font-weight: 600; display: none; }
-    footer { background: #fff; padding: 0.5rem 1rem; text-align: center; font-size: 0.8rem; color: #555; box-shadow: 0 -2px 4px rgba(0,0,0,0.1); }
-  </style>
 </head>
 <body>
-  <header><h1>Miary Podaży Pieniądza w Polsce</h1></header>
-  <div class="wrapper">
-    <aside id="sidebar">
-      <ul id="treeMenu"></ul>
-    </aside>
-    <main id="main">
-      <div class="controls">
-        <button data-range="YTD">Od początku roku</button>
-        <button data-range="1Y">1 rok</button>
-        <button data-range="5Y">5 lat</button>
-        <button data-range="10Y">10 lat</button>
-        <button data-range="ALL" class="active">Cały okres</button>
-        <label>Stacked<input type="checkbox" id="stackToggle"></label>
-        <label>Zmiana %<input type="checkbox" id="pctToggle"></label>
-        <label>Zmiana r/r<input type="checkbox" id="pctRRToggle"></label>
-      </div>
-      <div class="chart-container">
-        <canvas id="moneyChart"></canvas>
-        <div id="changeInfo"></div>
-      </div>
-    </main>
+  <header>
+    <h1>Miary Podaży Pieniądza w Polsce</h1>
+  </header>
+
+  <div class="controls">
+    <div class="range-buttons">
+      <button data-range="all">Od początku</button>
+      <button data-range="1y">1 rok</button>
+      <button data-range="5y">5 lat</button>
+      <button data-range="10y">10 lat</button>
+      <button data-range="ytd">Od początku roku</button>
+    </div>
+    <div class="modes">
+      <label><input type="checkbox" id="stacked"> Stacked</label>
+      <label><input type="checkbox" id="pct"> Δ %</label>
+      <label><input type="checkbox" id="pct_rr"> Δ % r/r</label>
+    </div>
   </div>
+
+  <div class="wrapper">
+    <nav id="treeMenu"></nav>
+    <section class="chart-container">
+      <canvas id="myChart"></canvas>
+      <div id="changeInfo"></div>
+    </section>
+  </div>
+
   <footer>
-    Źródło danych: <a href="https://nbp.pl/statystyka-i-sprawozdawczosc/statystyka-monetarna-i-finansowa/podaz-pieniadza-m3-i-czynniki-jego-kreacji/" target="_blank">nbp.pl/statystyka…kreacji</a><br>
-    Opracowanie: <a href="https://x.com/Dan_Kostecki" target="_blank">@Dan_Kostecki</a>
+    Źródło danych: 
+    <a href="https://nbp.pl/statystyka-i-sprawozdawczosc/statystyka-monetarna-i-finansowa/podaz-pieniadza-m3-i-czynniki-jego-kreacji/" target="_blank">nbp.pl</a>
+    &nbsp;|&nbsp;
+    Opracowanie: 
+    <a href="https://x.com/Dan_Kostecki" target="_blank">@Dan_Kostecki</a>
   </footer>
+
   <script>
-    let rawData, chart;
-    const selectedSeries = new Set();
+  (async ()=> {
+    const res = await fetch('am_data.json');
+    const json = await res.json();
+    const labels = json.dates.map(d=>new Date(d));
+    const rawData = json.data; // tablica [serie][wartości]
+    const treeDefs = [
+      { name: 'Pieniądz M3', idxs: [22,23,20,21,22] }, // tylko jako korzeń, idx 22 sumujący M2+20+21+22
+      { name: 'M2', idxs: [18,19,12] },
+      { name: 'M1', idxs: [10,11,4] },
+      { name: 'Depozyty bieżące', idxs: [3, [4,5,6,7,8,9]] },
+      { name: 'Depozyty do 2 lat', idxs: [11, [12,13,14,15,16,17]] },
+      // … w podobny sposób możesz dodać resztę
+    ];
 
-    async function loadData() {
-      rawData = await fetch('am_data.json').then(r => r.json());
-      buildTree(); setupControls(); createChart();
-    }
+    // stan aplikacji
+    let selectedSeries = new Set();
+    let activeRange = 'all';
+    const modes = { stacked:false, pct:false, pct_rr:false };
 
-    function setupControls() {
-      document.querySelectorAll('.controls button[data-range]').forEach(btn => {
-        btn.addEventListener('click', () => { document.querySelectorAll('.controls button[data-range]').forEach(b => b.classList.remove('active')); btn.classList.add('active'); renderChart(); });
+    // inicjalizacja przycisków zakresów
+    document.querySelectorAll('.range-buttons button').forEach(btn=>{
+      btn.addEventListener('click', _=>{
+        activeRange = btn.dataset.range;
+        updateChart();
       });
-      document.getElementById('stackToggle').addEventListener('change', renderChart);
-      document.getElementById('pctToggle').addEventListener('change', e => { if(e.target.checked) document.getElementById('pctRRToggle').checked = false; renderChart(); });
-      document.getElementById('pctRRToggle').addEventListener('change', e => { if(e.target.checked) document.getElementById('pctToggle').checked = false; renderChart(); });
+    });
+    // tryby
+    ['stacked','pct','pct_rr'].forEach(id=>{
+      document.getElementById(id).addEventListener('change', e=>{
+        modes[id] = e.target.checked;
+        updateChart();
+      });
+    });
+
+    // budowa drzewa
+    const tree = document.getElementById('treeMenu');
+    json.categories.forEach((cat, i)=>{
+      const node = document.createElement('div');
+      node.className = 'node';
+      node.dataset.index = i;
+      node.innerHTML = `<label>
+        <input type="checkbox" data-idx="${i}">
+        ${cat}
+      </label>`;
+      node.querySelector('label').addEventListener('click', e=>{
+        if (e.target.tagName!=='INPUT') {
+          // wybór głównego – usuwamy poprzednie
+          selectedSeries.clear();
+          selectedSeries.add(i);
+          updateCheckboxes();
+          updateChart();
+        }
+      });
+      node.querySelector('input').addEventListener('click', e=>{
+        const idx = +e.target.dataset.idx;
+        if (e.target.checked) selectedSeries.add(idx);
+        else selectedSeries.delete(idx);
+        updateChart();
+        e.stopPropagation();
+      });
+      tree.appendChild(node);
+    });
+
+    // synchronizacja stanu checkboxów z selectedSeries
+    function updateCheckboxes(){
+      document.querySelectorAll('#treeMenu input[type=checkbox]').forEach(ch=>{
+        ch.checked = selectedSeries.has(+ch.dataset.idx);
+      });
     }
 
-    function buildTree() {
-      const cols = rawData.columns;
-      const treeData = [{ name:'Pieniądz M3', index:22, children:[{ name:'Dodatkowe komponenty M3', index:null, children:[{ name:cols[19].column,index:19},{ name:cols[20].column,index:20},{ name:cols[21].column,index:21 }]} ,{ name:'Pieniądz M2', index:18, children:[{ name:'Depozyty do 2 lat', index:11, children:cols.slice(12,18).map((c,i)=>({ name:c.column,index:12+i }))},{ name:'Pieniądz M1', index:10, children:[{ name:'Depozyty bieżące', index:3, children:cols.slice(4,10).map((c,i)=>({ name:c.column,index:4+i }))},{ name:cols[0].column,index:0 }]}]}]}];
-      function render(nodes,parent){nodes.forEach(n=>{const li=document.createElement('li'),div=document.createElement('div');div.classList.add('node');if(n.index!==null){const cb=document.createElement('input');cb.type='checkbox';cb.dataset.index=n.index;cb.addEventListener('click',e=>{e.stopPropagation();if(cb.checked)selectedSeries.add(n.index);else selectedSeries.delete(n.index);renderChart();});div.appendChild(cb);}const span=document.createElement('span');span.textContent=n.name;div.appendChild(span);div.setAttribute('data-index',n.index);div.addEventListener('click',e=>{e.stopPropagation();document.querySelectorAll('.node').forEach(x=>x.classList.remove('active'));div.classList.add('active');selectedSeries.clear();if(n.index!==null)selectedSeries.add(n.index);renderChart();});li.appendChild(div);parent.appendChild(li);if(n.children){const ul=document.createElement('ul');li.appendChild(ul);render(n.children,ul);} });}
-      render(treeData,document.getElementById('treeMenu'));
+    // filtr zakresu czasu
+    function filterRange(dataArr){
+      const now = labels.length;
+      let start = 0;
+      switch(activeRange){
+        case '1y': start = Math.max(0, now - 12); break;
+        case '5y': start = Math.max(0, now - 60); break;
+        case '10y': start = Math.max(0, now - 120); break;
+        case 'ytd':
+          const thisYear = new Date().getFullYear();
+          start = labels.findIndex(d=>d.getFullYear()===thisYear);
+          if (start<0) start=0;
+          break;
+      }
+      return {
+        labs: labels.slice(start),
+        vals: dataArr.map(arr=>arr.slice(start))
+      };
     }
 
-    function createChart() {
-      const ctx = document.getElementById('moneyChart').getContext('2d');
-      chart = new Chart(ctx, { type:'line', data:{datasets:[]}, options:{responsive:true,interaction:{mode:'index',intersect:false},plugins:{tooltip:{enabled:true}},scales:{x:{type:'time',time:{unit:'month'}},y:{stacked:false}} } });
+    // przeróbka danych do Chart.js
+    function makeDatasets(){
+      const sel = Array.from(selectedSeries);
+      const { labs, vals } = filterRange(sel.map(i=>rawData[i]));
+      if (modes.pct || modes.pct_rr){
+        // pokazujemy tylko liczbę Δ w changeInfo, a na wykresie liniowo każde
+        return sel.map((i,j)=>({
+          label: json.categories[i],
+          data: vals[j],
+          borderWidth: 2,
+          fill: false
+        }));
+      }
+      // normalnie lub stacked
+      return sel.map((i,j)=>({
+        label: json.categories[i],
+        data: vals[j],
+        borderWidth: 2,
+        fill: modes.stacked ? 'origin' : false,
+        stack: modes.stacked ? 'stack1' : undefined
+      }));
     }
 
-    function getData(idx) {
-      const col = rawData.columns[idx];
-      let arr = col.data.map(d=>({x:d.date,y:d.value}));
-      const range = document.querySelector('.controls button.active').dataset.range;
-      const now=new Date();let start;
-      switch(range){case'YTD':start=new Date(now.getFullYear(),0,1);break;case'1Y':start=new Date(now.getFullYear()-1,now.getMonth(),now.getDate());break;case'5Y':start=new Date(now.getFullYear()-5,now.getMonth(),now.getDate());break;case'10Y':start=new Date(now.getFullYear()-10,now.getMonth(),now.getDate());break;}
-      return start?arr.filter(p=>new Date(p.x)>=start):arr;
+    // aktualizacja wykresu i changeInfo
+    function updateChart(){
+      const ds = makeDatasets();
+      myChart.data.labels = filterRange([]).labs; // tylko labels
+      myChart.data.datasets = ds;
+      myChart.options.scales.y.stacked = modes.stacked;
+      myChart.update();
+
+      // procentowe info
+      const info = [];
+      if (modes.pct || modes.pct_rr){
+        ds.forEach(d=> {
+          const arr = d.data;
+          if (arr.length<2) return;
+          let val;
+          if (modes.pct){
+            const a=arr[arr.length-2], b=arr[arr.length-1];
+            val = ((b-a)/a*100).toFixed(2)+' %';
+          } else {
+            // r/r: szukamy punktu sprzed ~12 elementów
+            const n = arr.length;
+            if (n<13) return;
+            const a=arr[n-13], b=arr[n-1];
+            val = ((b-a)/a*100).toFixed(2)+' % r/r';
+          }
+          info.push(`${d.label}: ${val}`);
+        });
+      }
+      document.getElementById('changeInfo').textContent = info.join(' | ');
     }
 
-    function renderChart() {
-      const fillOpt = document.getElementById('stackToggle').checked;
-      chart.options.scales.y.stacked = fillOpt;
-      const indices = Array.from(selectedSeries).sort((a,b)=>a-b);
-      const datasets = indices.map(i=>({label:rawData.columns[i].column,data:getData(i),borderWidth:2,tension:0.3,fill:fillOpt?'origin':false,stack:fillOpt?'stack1':undefined}));
-      const pct = document.getElementById('pctToggle').checked;
-      const pctRR = document.getElementById('pctRRToggle').checked;
-      const infoBox = document.getElementById('changeInfo');
-      if(pct||pctRR){const results=indices.map(i=>{const arr=getData(i);const last=arr[arr.length-1]?.y;let prev;if(pct)prev=arr[arr.length-2]?.y;else{const ld=new Date(arr[arr.length-1].x),ya=new Date(ld);ya.setFullYear(ld.getFullYear()-1);const match=arr.find(p=>{const d=new Date(p.x);return d.getFullYear()===ya.getFullYear()&&d.getMonth()===ya.getMonth();});prev=match?.y;}return((last-prev)/prev*100).toFixed(2);});infoBox.textContent=(pct?'Δ %: ':'Δ r/r %: ')+results.join(' , ')+' %';infoBox.style.display='block';}else infoBox.style.display='none';chart.data.datasets=datasets;chart.update();}
-    loadData();
+    // inicjalizujemy pusty wykres
+    const ctx = document.getElementById('myChart').getContext('2d');
+    const myChart = new Chart(ctx, {
+      type: 'line',
+      data: { labels: [], datasets: [] },
+      options: {
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { position: 'bottom' } },
+        scales: {
+          x: { type: 'time', time: { unit: 'month' } },
+          y: { stacked: false }
+        }
+      }
+    });
+
+    // domyślny wybór M3 (pierwszy w drzewku)
+    const first = 0;
+    selectedSeries.add(first);
+    updateCheckboxes();
+    updateChart();
+  })();
   </script>
 </body>
 </html>
