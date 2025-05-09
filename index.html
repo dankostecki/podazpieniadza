@@ -4,35 +4,54 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Podaż pieniądza w Polsce</title>
-    <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/recharts@2.12.7/umd/Recharts.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <style>
         .tooltip {
+            position: absolute;
             background: white;
             border: 1px solid #ccc;
             padding: 10px;
             border-radius: 5px;
+            pointer-events: none;
+            z-index: 10;
         }
     </style>
 </head>
 <body class="bg-gray-100 font-sans">
-    <div id="root"></div>
-    <div id="fallback" class="container mx-auto p-4">
+    <div class="container mx-auto p-4">
         <h1 class="text-2xl font-bold mb-4">Podaż pieniądza w Polsce</h1>
-        <p class="text-red-700">Aplikacja nie załadowała się poprawnie. Sprawdź konsolę przeglądarki (F12 → Console) lub spróbuj wczytać plik JSON ręcznie poniżej.</p>
+        <div class="mb-4">
+            <label class="block mb-2">Jeśli dane nie wczytały się automatycznie, wybierz plik JSON (np. am_data.json):</label>
+            <input type="file" id="fileInput" accept=".json" class="border p-2 rounded w-full" />
+        </div>
+        <div id="error" class="bg-red-100 text-red-700 p-4 rounded mb-4 hidden"></div>
+        <div id="loading" class="bg-yellow-100 text-yellow-700 p-4 rounded mb-4">Wczytywanie danych...</div>
+        <div class="flex flex-col md:flex-row">
+            <div id="menu" class="w-full md:w-1/4 bg-white p-4 rounded shadow"></div>
+            <div class="w-full md:w-3/4 bg-white p-4 rounded shadow mt-4 md:mt-0 md:ml-4">
+                <h2 id="chartTitle" class="text-lg font-semibold mb-2">Pieniądz M3</h2>
+                <div id="chartControls" class="mb-4 hidden">
+                    <button id="backButton" class="bg-gray-500 text-white py-1 px-2 rounded hover:bg-gray-600">Wstecz</button>
+                </div>
+                <canvas id="chart"></canvas>
+            </div>
+        </div>
+        <footer class="mt-4 text-sm text-gray-600">
+            <p>Dane: Narodowy Bank Polski. M3 obejmuje M2, operacje repo, papiery dłużne i fundusze rynku pieniężnego.</p>
+        </footer>
     </div>
-    <script type="text/babel">
+    <div id="tooltip" class="tooltip hidden"></div>
+    <script>
         console.log("Ładowanie aplikacji...");
 
-        // Sprawdzenie, czy zależności się załadowały
-        if (typeof React === 'undefined') console.error("React nie załadował się poprawnie.");
-        if (typeof ReactDOM === 'undefined') console.error("ReactDOM nie załadował się poprawnie.");
-        if (typeof Recharts === 'undefined') console.error("Recharts nie załadował się poprawnie.");
-
-        const { useState, useEffect } = React;
-        const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } = Recharts;
+        // Sprawdzenie, czy Chart.js się załadował
+        if (typeof Chart === 'undefined') {
+            console.error("Błąd: Chart.js nie załadował się poprawnie.");
+            displayError("Błąd: Chart.js nie załadował się poprawnie. Sprawdź połączenie z internetem.");
+        } else {
+            console.log("Chart.js załadowany poprawnie:", Chart.version);
+        }
 
         // Hierarchy definition
         const hierarchy = {
@@ -89,235 +108,219 @@
             ]
         };
 
+        // State
+        let data = null;
+        let selectedCategory = hierarchy;
+        let selectedPath = [23];
+        let chart = null;
+
         // Function to generate dates from period codes
-        const getDateFromPeriod = (period) => {
+        function getDateFromPeriod(period) {
             const startDate = new Date(1996, 11, 31); // 1996-12-31 corresponds to period 35430
             const months = Math.floor((period - 35430) / 30.42); // Approximate months
             const date = new Date(startDate);
             date.setMonth(startDate.getMonth() + months);
             return date.toISOString().split("T")[0]; // YYYY-MM-DD
-        };
+        }
 
-        // Component to render hierarchical menu
-        const CategoryMenu = ({ node, onSelect, selectedPath }) => {
-            const isSelected = selectedPath.includes(node.column_id);
-            return (
-                <div className="ml-4">
-                    <button
-                        onClick={() => onSelect(node)}
-                        className={`text-left w-full py-1 px-2 rounded ${isSelected ? 'bg-blue-500 text-white' : 'hover:bg-gray-200'}`}
-                        title={node.name}
-                    >
-                        {node.name}
-                    </button>
-                    {node.children && isSelected && (
-                        <div className="ml-4">
-                            {node.children.map(child => (
-                                <CategoryMenu
-                                    key={child.column_id}
-                                    node={child}
-                                    onSelect={onSelect}
-                                    selectedPath={selectedPath}
-                                />
-                            ))}
-                        </div>
-                    )}
-                </div>
-            );
-        };
+        // Function to show/hide elements
+        function showElement(id, show = true) {
+            document.getElementById(id).classList.toggle('hidden', !show);
+        }
 
-        // Main App component
-        const App = () => {
-            const [data, setData] = useState(null);
-            const [selectedCategory, setSelectedCategory] = useState(hierarchy);
-            const [selectedPath, setSelectedPath] = useState([23]);
-            const [error, setError] = useState(null);
+        // Function to display error
+        function displayError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = message;
+            showElement('error', true);
+            showElement('loading', false);
+        }
 
-            // Attempt to load JSON via fetch on mount
-            useEffect(() => {
-                console.log("Próba wczytania pliku JSON przez fetch...");
-                fetch('am_data.json')
-                    .then(response => {
-                        console.log("Odpowiedź fetch:", response);
-                        if (!response.ok) {
-                            throw new Error('Nie udało się wczytać pliku JSON: ' + response.statusText);
+        // Function to render menu
+        function renderMenu(node, parentElement, path = []) {
+            const isSelected = path.includes(node.column_id);
+            const button = document.createElement('button');
+            button.className = `text-left w-full py-1 px-2 rounded ${isSelected ? 'bg-blue-500 text-white' : 'hover:bg-gray-200'}`;
+            button.textContent = node.name;
+            button.title = node.name;
+            button.addEventListener('click', () => handleSelectCategory(node));
+            parentElement.appendChild(button);
+
+            if (node.children && isSelected) {
+                const childrenDiv = document.createElement('div');
+                childrenDiv.className = 'ml-4';
+                node.children.forEach(child => renderMenu(child, childrenDiv, path));
+                parentElement.appendChild(childrenDiv);
+            }
+        }
+
+        // Function to handle category selection
+        function handleSelectCategory(node) {
+            selectedCategory = node;
+            const newPath = [...selectedPath];
+            const index = newPath.indexOf(node.column_id);
+            if (index === -1) {
+                newPath.push(node.column_id);
+            } else {
+                newPath.splice(index + 1);
+            }
+            selectedPath = newPath;
+            updateUI();
+        }
+
+        // Function to handle back button
+        function handleBack() {
+            if (selectedPath.length > 1) {
+                const newPath = selectedPath.slice(0, -1);
+                const parentId = newPath[newPath.length - 1];
+                const findNode = (node, id) => {
+                    if (node.column_id === id) return node;
+                    if (node.children) {
+                        for (let child of node.children) {
+                            const found = findNode(child, id);
+                            if (found) return found;
                         }
-                        return response.json();
-                    })
-                    .then(jsonData => {
-                        console.log("Wczytano dane JSON:", jsonData);
-                        // Fix dates in the data
-                        const fixedData = {
-                            columns: jsonData.columns.map(column => ({
-                                ...column,
-                                data: column.data.map(item => ({
-                                    ...item,
-                                    date: getDateFromPeriod(item.period)
-                                }))
-                            }))
-                        };
-                        setData(fixedData);
-                        setError(null);
-                    })
-                    .catch(err => {
-                        console.error("Błąd podczas wczytywania JSON przez fetch:", err);
-                        setError("Błąd podczas wczytywania pliku JSON: " + err.message);
-                        setData(null);
-                    });
-            }, []);
-
-            // Handle manual file upload
-            const handleFileUpload = (event) => {
-                const file = event.target.files[0];
-                if (!file) return;
-
-                console.log("Wczytywanie pliku JSON przez input:", file.name);
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    try {
-                        const jsonData = JSON.parse(e.target.result);
-                        console.log("Wczytano dane JSON przez input:", jsonData);
-                        if (!jsonData.columns || !Array.isArray(jsonData.columns)) {
-                            throw new Error("Niepoprawna struktura pliku JSON. Oczekiwano obiektu z kluczem 'columns'.");
-                        }
-                        // Fix dates in the data
-                        const fixedData = {
-                            columns: jsonData.columns.map(column => ({
-                                ...column,
-                                data: column.data.map(item => ({
-                                    ...item,
-                                    date: getDateFromPeriod(item.period)
-                                }))
-                            }))
-                        };
-                        setData(fixedData);
-                        setError(null);
-                    } catch (err) {
-                        console.error("Błąd podczas wczytywania JSON przez input:", err);
-                        setError("Błąd podczas wczytywania pliku JSON: " + err.message);
-                        setData(null);
                     }
+                    return null;
                 };
-                reader.readAsText(file);
-            };
+                selectedCategory = findNode(hierarchy, parentId);
+                selectedPath = newPath;
+                updateUI();
+            }
+        }
 
-            const handleSelectCategory = (node) => {
-                setSelectedCategory(node);
-                const newPath = [...selectedPath];
-                const index = newPath.indexOf(node.column_id);
-                if (index === -1) {
-                    newPath.push(node.column_id);
-                } else {
-                    newPath.splice(index + 1);
-                }
-                setSelectedPath(newPath);
-            };
+        // Function to update UI
+        function updateUI() {
+            // Update menu
+            const menu = document.getElementById('menu');
+            menu.innerHTML = '<h2 class="text-lg font-semibold mb-2">Kategorie</h2>';
+            renderMenu(hierarchy, menu, selectedPath);
 
-            const handleBack = () => {
-                if (selectedPath.length > 1) {
-                    const newPath = selectedPath.slice(0, -1);
-                    const parentId = newPath[newPath.length - 1];
-                    const findNode = (node, id) => {
-                        if (node.column_id === id) return node;
-                        if (node.children) {
-                            for (let child of node.children) {
-                                const found = findNode(child, id);
-                                if (found) return found;
-                            }
-                        }
-                        return null;
-                    };
-                    const parentNode = findNode(hierarchy, parentId);
-                    setSelectedCategory(parentNode);
-                    setSelectedPath(newPath);
-                }
-            };
+            // Update chart title and controls
+            document.getElementById('chartTitle').textContent = selectedCategory.name;
+            showElement('chartControls', selectedPath.length > 1);
 
+            // Update chart
             const chartData = data?.columns?.find(col => col.column_id === selectedCategory.column_id)?.data.map(d => ({
                 date: d.date,
                 value: d.value
             })) || [];
 
-            return (
-                <div className="container mx-auto p-4">
-                    <h1 className="text-2xl font-bold mb-4">Podaż pieniądza w Polsce</h1>
-                    <div className="mb-4">
-                        <label className="block mb-2">Jeśli dane nie wczytały się automatycznie, wybierz plik JSON (np. am_data.json):</label>
-                        <input
-                            type="file"
-                            accept=".json"
-                            onChange={handleFileUpload}
-                            className="border p-2 rounded w-full"
-                        />
-                    </div>
-                    {error && (
-                        <div className="bg-red-100 text-red-700 p-4 rounded mb-4">
-                            {error}
-                        </div>
-                    )}
-                    {!data && !error && (
-                        <div className="bg-yellow-100 text-yellow-700 p-4 rounded mb-4">
-                            Wczytywanie danych...
-                        </div>
-                    )}
-                    {data && (
-                        <div className="flex flex-col md:flex-row">
-                            <div className="w-full md:w-1/4 bg-white p-4 rounded shadow">
-                                <h2 className="text-lg font-semibold mb-2">Kategorie</h2>
-                                <CategoryMenu
-                                    node={hierarchy}
-                                    onSelect={handleSelectCategory}
-                                    selectedPath={selectedPath}
-                                />
-                            </div>
-                            <div className="w-full md:w-3/4 bg-white p-4 rounded shadow mt-4 md:mt-0 md:ml-4">
-                                <h2 className="text-lg font-semibold mb-2">{selectedCategory.name}</h2>
-                                {selectedPath.length > 1 && (
-                                    <button
-                                        onClick={handleBack}
-                                        className="mb-4 bg-gray-500 text-white py-1 px-2 rounded hover:bg-gray-600"
-                                    >
-                                        Wstecz
-                                    </button>
-                                )}
-                                {chartData.length > 0 ? (
-                                    <LineChart width={600} height={400} data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                                        <CartesianGrid strokeDasharray="3 3" />
-                                        <XAxis dataKey="date" />
-                                        <YAxis />
-                                        <Tooltip content={({ payload, label }) => (
-                                            <div className="tooltip">
-                                                <p>Data: {label}</p>
-                                                <p>Wartość: {payload?.[0]?.value?.toFixed(2)} mln zł</p>
-                                            </div>
-                                        )} />
-                                        <Legend />
-                                        <Line type="monotone" dataKey="value" stroke="#8884d8" name={selectedCategory.name} />
-                                    </LineChart>
-                                ) : (
-                                    <p className="text-gray-500">Brak danych dla wybranej kategorii.</p>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                    <footer className="mt-4 text-sm text-gray-600">
-                        <p>Dane: Narodowy Bank Polski. M3 obejmuje M2, operacje repo, papiery dłużne i fundusze rynku pieniężnego.</p>
-                    </footer>
-                </div>
-            );
-        };
-
-        // Render the app
-        try {
-            console.log("Próba renderowania aplikacji...");
-            document.getElementById('fallback').style.display = 'none'; // Ukryj fallback, jeśli aplikacja się ładuje
-            ReactDOM.render(<App />, document.getElementById('root'));
-            console.log("Aplikacja wyrenderowana poprawnie.");
-        } catch (err) {
-            console.error("Błąd podczas renderowania aplikacji:", err);
-            document.getElementById('fallback').style.display = 'block'; // Pokaż fallback, jeśli renderowanie się nie powiodło
+            if (chart) chart.destroy();
+            const ctx = document.getElementById('chart').getContext('2d');
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: chartData.map(d => d.date),
+                    datasets: [{
+                        label: selectedCategory.name,
+                        data: chartData.map(d => d.value),
+                        borderColor: '#8884d8',
+                        fill: false,
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { title: { display: true, text: 'Data' } },
+                        y: { title: { display: true, text: 'Wartość (mln zł)' } }
+                    },
+                    plugins: {
+                        legend: { display: true },
+                        tooltip: { enabled: false }
+                    },
+                    onHover: (event, elements) => {
+                        const tooltip = document.getElementById('tooltip');
+                        if (elements.length > 0) {
+                            const element = elements[0];
+                            const dataset = element.dataset;
+                            const index = element.index;
+                            const value = dataset.data[index];
+                            const label = chart.data.labels[index];
+                            tooltip.innerHTML = `
+                                <p>Data: ${label}</p>
+                                <p>Wartość: ${value.toFixed(2)} mln zł</p>
+                            `;
+                            tooltip.style.left = `${event.x + 10}px`;
+                            tooltip.style.top = `${event.y + 10}px`;
+                            showElement('tooltip', true);
+                        } else {
+                            showElement('tooltip', false);
+                        }
+                    }
+                }
+            });
         }
+
+        // Load JSON via fetch
+        console.log("Próba wczytania pliku JSON przez fetch...");
+        fetch('am_data.json')
+            .then(response => {
+                console.log("Odpowiedź fetch:", response);
+                if (!response.ok) {
+                    throw new Error('Nie udało się wczytać pliku JSON: ' + response.statusText);
+                }
+                return response.json();
+            })
+            .then(jsonData => {
+                console.log("Wczytano dane JSON:", jsonData);
+                // Fix dates in the data
+                data = {
+                    columns: jsonData.columns.map(column => ({
+                        ...column,
+                        data: column.data.map(item => ({
+                            ...item,
+                            date: getDateFromPeriod(item.period)
+                        }))
+                    }))
+                };
+                showElement('loading', false);
+                updateUI();
+            })
+            .catch(err => {
+                console.error("Błąd podczas wczytywania JSON przez fetch:", err);
+                displayError("Błąd podczas wczytywania pliku JSON: " + err.message);
+            });
+
+        // Handle manual file upload
+        document.getElementById('fileInput').addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            console.log("Wczytywanie pliku JSON przez input:", file.name);
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const jsonData = JSON.parse(e.target.result);
+                    console.log("Wczytano dane JSON przez input:", jsonData);
+                    if (!jsonData.columns || !Array.isArray(jsonData.columns)) {
+                        throw new Error("Niepoprawna struktura pliku JSON. Oczekiwano obiektu z kluczem 'columns'.");
+                    }
+                    // Fix dates in the data
+                    data = {
+                        columns: jsonData.columns.map(column => ({
+                            ...column,
+                            data: column.data.map(item => ({
+                                ...item,
+                                date: getDateFromPeriod(item.period)
+                            }))
+                        }))
+                    };
+                    showElement('error', false);
+                    showElement('loading', false);
+                    updateUI();
+                } catch (err) {
+                    console.error("Błąd podczas wczytywania JSON przez input:", err);
+                    displayError("Błąd podczas wczytywania pliku JSON: " + err.message);
+                }
+            };
+            reader.readAsText(file);
+        });
+
+        // Add event listener for back button
+        document.getElementById('backButton').addEventListener('click', handleBack);
     </script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.22.9/babel.min.js"></script>
 </body>
 </html>
