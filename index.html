@@ -14,10 +14,12 @@
     body { font-family: 'Inter', sans-serif; background: #f5f5f5; margin: 0; padding: 0; }
     header { background: #fff; padding: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); position: sticky; top: 0; z-index: 10; }
     .wrapper { display: flex; height: calc(100vh - 68px); }
-    #sidebar { width: 280px; background: #fff; padding: 1rem; box-shadow: 2px 0 4px rgba(0,0,0,0.1); overflow-y: auto; }
+    #sidebar { width: 300px; background: #fff; padding: 1rem; box-shadow: 2px 0 4px rgba(0,0,0,0.1); overflow-y: auto; }
     #sidebar ul { list-style: none; padding: 0; margin: 0; }
-    #sidebar li { margin: 0.5rem 0; cursor: pointer; border-radius: 6px; padding: 0.5rem; }
+    #sidebar li { margin: 0.3rem 0; cursor: pointer; border-radius: 6px; padding: 0.4rem 0.6rem; }
     #sidebar li:hover, #sidebar li.active { background: #e6f0ff; }
+    #sidebar .category { font-weight: 600; }
+    #sidebar ul ul { padding-left: 1rem; }
     #main { flex: 1; padding: 1rem; display: flex; flex-direction: column; }
     .controls { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
     .controls button { flex: 1; padding: 0.5rem; border-radius: 8px; border: 1px solid #ddd; background: #fff; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.05); font-size: 0.9rem; }
@@ -51,7 +53,7 @@
     let rawData, chart;
     async function loadData() {
       rawData = await fetch('am_data.json').then(res => res.json());
-      buildTree(rawData.columns);
+      buildTree();
       document.querySelectorAll('#rangeButtons button').forEach(btn => {
         btn.addEventListener('click', () => {
           document.querySelectorAll('#rangeButtons button').forEach(b => b.classList.remove('active'));
@@ -62,21 +64,45 @@
       createChart();
     }
 
-    function buildTree(items) {
+    function buildTree() {
+      const cols = rawData.columns;
+      const categories = [
+        { name: 'Pieniądz gotówkowy w obiegu', children: [{ name: cols[0].column, index: 0 }] },
+        { name: 'Depozyty i inne zobowiązania bieżące', children: cols.slice(4, 10).map((c,i) => ({ name: c.column, index: 4+i })) },
+        { name: 'Pieniądz M1', children: [{ name: cols[10].column, index: 10 }] },
+        { name: 'Depozyty i inne zobowiązania do 2 lat włącznie', children: cols.slice(12, 18).map((c,i) => ({ name: c.column, index: 12+i })) },
+        { name: 'Pieniądz M2', children: [{ name: cols[18].column, index: 18 }] },
+        { name: 'Dodatkowe komponenty M3', children: cols.slice(19, 22).map((c,i) => ({ name: c.column, index: 19+i })) },
+        { name: 'Pieniądz M3', children: [{ name: cols[22].column, index: 22 }] }
+      ];
       const tree = document.getElementById('treeMenu');
-      items.forEach((item, idx) => {
-        const li = document.createElement('li');
-        li.textContent = item.column;
-        li.dataset.index = idx;
-        li.addEventListener('click', () => {
-          document.querySelectorAll('#treeMenu li').forEach(el => el.classList.remove('active'));
-          li.classList.add('active');
-          updateChart();
+      categories.forEach(cat => {
+        const catLi = document.createElement('li');
+        catLi.textContent = cat.name;
+        catLi.classList.add('category');
+        tree.appendChild(catLi);
+        const subUl = document.createElement('ul');
+        cat.children.forEach(child => {
+          const li = document.createElement('li');
+          li.textContent = child.name;
+          li.dataset.index = child.index;
+          li.addEventListener('click', e => {
+            e.stopPropagation();
+            document.querySelectorAll('#treeMenu li').forEach(el => el.classList.remove('active'));
+            li.classList.add('active');
+            updateChart();
+          });
+          subUl.appendChild(li);
         });
-        tree.appendChild(li);
+        tree.appendChild(subUl);
+        // toggle
+        catLi.addEventListener('click', () => {
+          subUl.style.display = subUl.style.display === 'none' ? 'block' : 'none';
+        });
       });
-      // Activate first
-      tree.querySelector('li').classList.add('active');
+      // Activate first leaf
+      const firstLeaf = document.querySelector('#treeMenu ul li');
+      if (firstLeaf) firstLeaf.classList.add('active');
     }
 
     function createChart() {
@@ -97,6 +123,7 @@
 
     function updateChart() {
       const activeItem = document.querySelector('#treeMenu li.active');
+      if (!activeItem || !activeItem.dataset.index) return;
       const col = rawData.columns[activeItem.dataset.index];
       const now = new Date();
       let startDate;
