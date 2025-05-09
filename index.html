@@ -35,7 +35,9 @@
                         </select>
                     </div>
                 </div>
-                <canvas id="chart"></canvas>
+                <div class="chart-wrapper">
+                    <canvas id="chart"></canvas>
+                </div>
             </div>
         </div>
         <footer>
@@ -51,6 +53,16 @@
             displayError("Błąd: Chart.js nie załadował się poprawnie. Sprawdź połączenie z internetem.");
         } else {
             console.log("Chart.js załadowany poprawnie:", Chart.version);
+        }
+
+        // Sprawdzenie, czy styles.css się załadował
+        const stylesLoaded = Array.from(document.styleSheets).some(sheet => {
+            return sheet.href && sheet.href.includes('styles.css');
+        });
+        if (!stylesLoaded) {
+            console.error("Błąd: Plik styles.css nie załadował się poprawnie.");
+        } else {
+            console.log("Plik styles.css załadowany poprawnie.");
         }
 
         // Hierarchy definition
@@ -249,7 +261,7 @@
                     datasets: [{
                         label: selectedCategory.name,
                         data: chartData.map(d => d.value),
-                        borderColor: '#3b82f6',
+                        borderColor: '#4a90e2',
                         fill: false,
                         tension: 0.1
                     }]
@@ -266,11 +278,11 @@
                         tooltip: {
                             enabled: true,
                             backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                            titleColor: '#333',
-                            bodyColor: '#333',
-                            borderColor: '#ccc',
+                            titleColor: '#2d3748',
+                            bodyColor: '#2d3748',
+                            borderColor: '#e2e8f0',
                             borderWidth: 1,
-                            cornerRadius: 5,
+                            cornerRadius: 6,
                             callbacks: {
                                 label: function(context) {
                                     const value = context.parsed.y;
