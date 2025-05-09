@@ -16,10 +16,13 @@
     .wrapper { display: flex; height: calc(100vh - 68px); }
     #sidebar { width: 300px; background: #fff; padding: 1rem; box-shadow: 2px 0 4px rgba(0,0,0,0.1); overflow-y: auto; }
     #sidebar ul { list-style: none; padding: 0; margin: 0; }
-    #sidebar li { margin: 0.3rem 0; cursor: pointer; border-radius: 6px; padding: 0.4rem 0.6rem; }
-    #sidebar li:hover, #sidebar li.active { background: #e6f0ff; }
+    #sidebar li { margin: 0.3rem 0; }
+    #sidebar .node { display: flex; align-items: center; cursor: pointer; border-radius: 6px; padding: 0.4rem 0.6rem; }
+    #sidebar .node:hover { background: #e6f0ff; }
+    #sidebar .node.active { background: #cfe2ff; }
     #sidebar .category { font-weight: 600; }
-    #sidebar ul ul { padding-left: 1rem; }
+    .toggle { margin-right: 0.5rem; font-size: 0.8rem; user-select: none; }
+    #sidebar ul ul { padding-left: 1rem; display: none; }
     #main { flex: 1; padding: 1rem; display: flex; flex-direction: column; }
     .controls { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
     .controls button { flex: 1; padding: 0.5rem; border-radius: 8px; border: 1px solid #ddd; background: #fff; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.05); font-size: 0.9rem; }
@@ -66,79 +69,126 @@
 
     function buildTree() {
       const cols = rawData.columns;
-      const categories = [
-        { name: 'Pieniądz gotówkowy w obiegu', children: [{ name: cols[0].column, index: 0 }] },
-        { name: 'Depozyty i inne zobowiązania bieżące', children: cols.slice(4, 10).map((c,i) => ({ name: c.column, index: 4+i })) },
-        { name: 'Pieniądz M1', children: [{ name: cols[10].column, index: 10 }] },
-        { name: 'Depozyty i inne zobowiązania do 2 lat włącznie', children: cols.slice(12, 18).map((c,i) => ({ name: c.column, index: 12+i })) },
-        { name: 'Pieniądz M2', children: [{ name: cols[18].column, index: 18 }] },
-        { name: 'Dodatkowe komponenty M3', children: cols.slice(19, 22).map((c,i) => ({ name: c.column, index: 19+i })) },
-        { name: 'Pieniądz M3', children: [{ name: cols[22].column, index: 22 }] }
+      const treeData = [
+        {
+          name: 'Pieniądz M3', index: 22, children: [
+            { name: 'Pieniądz M3 (suma)', index: 22 },
+            { name: 'Dodatkowe komponenty M3', children: [
+              { name: cols[19].column, index: 19 },
+              { name: cols[20].column, index: 20 },
+              { name: cols[21].column, index: 21 }
+            ]},
+            { name: 'Pieniądz M2 (suma)', index: 18, children: [
+              { name: 'Depozyty i inne zobowiązania do 2 lat włącznie', children: [
+                { name: cols[12].column, index: 12 },
+                { name: cols[13].column, index: 13 },
+                { name: cols[14].column, index: 14 },
+                { name: cols[15].column, index: 15 },
+                { name: cols[16].column, index: 16 },
+                { name: cols[17].column, index: 17 }
+              ]},
+              { name: 'Pieniądz M1 (suma)', index: 10, children: [
+                { name: 'Depozyty i inne zobowiązania bieżące', children: [
+                  { name: cols[4].column, index: 4 },
+                  { name: cols[5].column, index: 5 },
+                  { name: cols[6].column, index: 6 },
+                  { name: cols[7].column, index: 7 },
+                  { name: cols[8].column, index: 8 },
+                  { name: cols[9].column, index: 9 }
+                ]},
+                { name: cols[0].column, index: 0 }
+              ]}
+            ]}
+          ]
+        }
       ];
+
       const tree = document.getElementById('treeMenu');
-      categories.forEach(cat => {
-        const catLi = document.createElement('li');
-        catLi.textContent = cat.name;
-        catLi.classList.add('category');
-        tree.appendChild(catLi);
-        const subUl = document.createElement('ul');
-        cat.children.forEach(child => {
+      function render(nodes, parentUl) {
+        nodes.forEach(node => {
           const li = document.createElement('li');
-          li.textContent = child.name;
-          li.dataset.index = child.index;
-          li.addEventListener('click', e => {
+          const div = document.createElement('div');
+          div.classList.add('node');
+          if (node.index !== undefined) div.dataset.index = node.index;
+
+          if (node.children) {
+            const toggle = document.createElement('span');
+            toggle.textContent = '+';
+            toggle.classList.add('toggle');
+            div.appendChild(toggle);
+          } else {
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.dataset.index = node.index;
+            cb.addEventListener('change', () => updateChart());
+            div.appendChild(cb);
+          }
+
+          const span = document.createElement('span');
+          span.textContent = node.name;
+          span.style.marginLeft = '4px';
+          div.appendChild(span);
+
+          div.addEventListener('click', e => {
             e.stopPropagation();
-            document.querySelectorAll('#treeMenu li').forEach(el => el.classList.remove('active'));
-            li.classList.add('active');
-            updateChart();
+            if (node.children) {
+              const ul = div.nextSibling;
+              ul.style.display = ul.style.display === 'block' ? 'none' : 'block';
+              toggle.textContent = ul.style.display === 'block' ? '−' : '+';
+            }
           });
-          subUl.appendChild(li);
+
+          li.appendChild(div);
+          parentUl.appendChild(li);
+
+          if (node.children) {
+            const ul = document.createElement('ul');
+            ul.style.display = 'none';
+            li.appendChild(ul);
+            render(node.children, ul);
+          }
         });
-        tree.appendChild(subUl);
-        // toggle
-        catLi.addEventListener('click', () => {
-          subUl.style.display = subUl.style.display === 'none' ? 'block' : 'none';
-        });
-      });
-      // Activate first leaf
-      const firstLeaf = document.querySelector('#treeMenu ul li');
-      if (firstLeaf) firstLeaf.classList.add('active');
+      }
+
+      render(treeData, tree);
     }
 
     function createChart() {
       const ctx = document.getElementById('moneyChart').getContext('2d');
       chart = new Chart(ctx, {
-        type: 'line',
-        data: { labels: [], datasets: [{ label: '', data: [], borderWidth: 2, tension: 0.3 }] },
+        type: 'line', data: { labels: [], datasets: [] },
         options: {
-          responsive: true,
-          animation: { duration: 300 },
+          responsive: true, animation: { duration: 300 },
           interaction: { mode: 'index', intersect: false },
           plugins: { tooltip: { enabled: true } },
-          scales: { x: { type: 'time', time: { unit: 'month' }} }
+          scales: { x: { type: 'time', time: { unit: 'month' }}}
         }
       });
-      updateChart();
     }
 
     function updateChart() {
-      const activeItem = document.querySelector('#treeMenu li.active');
-      if (!activeItem || !activeItem.dataset.index) return;
-      const col = rawData.columns[activeItem.dataset.index];
-      const now = new Date();
-      let startDate;
-      const activeRange = document.querySelector('#rangeButtons button.active').dataset.range;
-      switch (activeRange) {
+      const range = document.querySelector('#rangeButtons button.active').dataset.range;
+      const now = new Date(); let startDate;
+      switch (range) {
         case 'YTD': startDate = new Date(now.getFullYear(), 0, 1); break;
         case '1Y': startDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()); break;
         case '5Y': startDate = new Date(now.getFullYear() - 5, now.getMonth(), now.getDate()); break;
         case '10Y': startDate = new Date(now.getFullYear() - 10, now.getMonth(), now.getDate()); break;
-        default: startDate = new Date(col.data[0].date);
+        default: startDate = null;
       }
-      const filtered = col.data.filter(d => new Date(d.date) >= startDate);
-      chart.data.labels = filtered.map(d => d.date);
-      chart.data.datasets[0].data = filtered.map(d => d.value);
-      chart.data.datasets[0].label = col.column;
+      const checks = Array.from(document.querySelectorAll('#treeMenu input[type="checkbox"]:checked'));
+      if (checks.length === 0) return;
+      chart.data.datasets = [];
+      chart.data.labels = [];
+      checks.forEach(cb => {
+        const idx = cb.dataset.index;
+        const col = rawData.columns[idx];
+        let data = col.data;
+        if (startDate) data = data.filter(d => new Date(d.date) >= startDate);
+        const labels = data.map(d => d.date);
+        if (chart.data.labels.length < labels.length) chart.data.labels = labels;
+        chart.data.datasets.push({ label: col.column, data: data.map(d => d.value), borderWidth: 2, tension: 0.3 });
+      });
       chart.update();
     }
 
