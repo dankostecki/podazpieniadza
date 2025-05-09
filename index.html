@@ -31,12 +31,15 @@
     .chart-container { flex: 1; padding: 0.5rem; position: relative; max-height: calc(100% - 10px); }
     canvas { background: #fff; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 100% !important; height: 100% !important; }
     #changeInfo { position: absolute; top: 10px; right: 20px; background: rgba(255,255,255,0.8); padding: 0.3rem 0.6rem; border-radius: 4px; font-weight: 600; display: none; }
+    footer { background: #fff; padding: 0.5rem 1rem; text-align: center; font-size: 0.8rem; color: #555; box-shadow: 0 -2px 4px rgba(0,0,0,0.1); }
   </style>
 </head>
 <body>
   <header><h1>Miary Podaży Pieniądza w Polsce</h1></header>
   <div class="wrapper">
-    <aside id="sidebar"><ul id="treeMenu"></ul></aside>
+    <aside id="sidebar">
+      <ul id="treeMenu"></ul>
+    </aside>
     <main id="main">
       <div class="controls">
         <button data-range="YTD">Od początku roku</button>
@@ -54,6 +57,10 @@
       </div>
     </main>
   </div>
+  <footer>
+    Źródło danych: <a href="https://nbp.pl/statystyka-i-sprawozdawczosc/statystyka-monetarna-i-finansowa/podaz-pieniadza-m3-i-czynniki-jego-kreacji/" target="_blank">nbp.pl/statystyka…kreacji</a><br>
+    Opracowanie: <a href="https://x.com/Dan_Kostecki" target="_blank">@Dan_Kostecki</a>
+  </footer>
   <script>
     let rawData, chart;
     const selectedSeries = new Set();
@@ -65,45 +72,23 @@
 
     function setupControls() {
       document.querySelectorAll('.controls button[data-range]').forEach(btn => {
-        btn.addEventListener('click', () => {
-          document.querySelectorAll('.controls button[data-range]').forEach(b => b.classList.remove('active'));
-          btn.classList.add('active'); renderChart();
-        });
+        btn.addEventListener('click', () => { document.querySelectorAll('.controls button[data-range]').forEach(b => b.classList.remove('active')); btn.classList.add('active'); renderChart(); });
       });
       document.getElementById('stackToggle').addEventListener('change', renderChart);
-      document.getElementById('pctToggle').addEventListener('change', e => {
-        if (e.target.checked) document.getElementById('pctRRToggle').checked = false;
-        renderChart();
-      });
-      document.getElementById('pctRRToggle').addEventListener('change', e => {
-        if (e.target.checked) document.getElementById('pctToggle').checked = false;
-        renderChart();
-      });
+      document.getElementById('pctToggle').addEventListener('change', e => { if(e.target.checked) document.getElementById('pctRRToggle').checked = false; renderChart(); });
+      document.getElementById('pctRRToggle').addEventListener('change', e => { if(e.target.checked) document.getElementById('pctToggle').checked = false; renderChart(); });
     }
 
     function buildTree() {
       const cols = rawData.columns;
-      const treeData = [
-        { name:'Pieniądz M3', index:22, children:[
-          { name:'Dodatkowe komponenty M3', index:null, children:[
-            { name:cols[19].column, index:19 }, { name:cols[20].column, index:20 }, { name:cols[21].column, index:21 }
-          ]},
-          { name:'Pieniądz M2', index:18, children:[
-            { name:'Depozyty do 2 lat', index:11, children:cols.slice(12,18).map((c,i)=>({ name:c.column,index:12+i })) },
-            { name:'Pieniądz M1', index:10, children:[
-              { name:'Depozyty bieżące', index:3, children:cols.slice(4,10).map((c,i)=>({ name:c.column,index:4+i })) },
-              { name:cols[0].column,index:0 }
-            ]}
-          ]}
-        ]}
-      ];
+      const treeData = [{ name:'Pieniądz M3', index:22, children:[{ name:'Dodatkowe komponenty M3', index:null, children:[{ name:cols[19].column,index:19},{ name:cols[20].column,index:20},{ name:cols[21].column,index:21 }]} ,{ name:'Pieniądz M2', index:18, children:[{ name:'Depozyty do 2 lat', index:11, children:cols.slice(12,18).map((c,i)=>({ name:c.column,index:12+i }))},{ name:'Pieniądz M1', index:10, children:[{ name:'Depozyty bieżące', index:3, children:cols.slice(4,10).map((c,i)=>({ name:c.column,index:4+i }))},{ name:cols[0].column,index:0 }]}]}]}];
       function render(nodes,parent){nodes.forEach(n=>{const li=document.createElement('li'),div=document.createElement('div');div.classList.add('node');if(n.index!==null){const cb=document.createElement('input');cb.type='checkbox';cb.dataset.index=n.index;cb.addEventListener('click',e=>{e.stopPropagation();if(cb.checked)selectedSeries.add(n.index);else selectedSeries.delete(n.index);renderChart();});div.appendChild(cb);}const span=document.createElement('span');span.textContent=n.name;div.appendChild(span);div.setAttribute('data-index',n.index);div.addEventListener('click',e=>{e.stopPropagation();document.querySelectorAll('.node').forEach(x=>x.classList.remove('active'));div.classList.add('active');selectedSeries.clear();if(n.index!==null)selectedSeries.add(n.index);renderChart();});li.appendChild(div);parent.appendChild(li);if(n.children){const ul=document.createElement('ul');li.appendChild(ul);render(n.children,ul);} });}
       render(treeData,document.getElementById('treeMenu'));
     }
 
     function createChart() {
       const ctx = document.getElementById('moneyChart').getContext('2d');
-      chart = new Chart(ctx, { type:'line', data:{datasets:[]}, options:{responsive:true,interaction:{mode:'index',intersect:false},plugins:{tooltip:{enabled:true}},scales:{x:{type:'time',time:{unit:'month'}},y:{stacked:false}}} });
+      chart = new Chart(ctx, { type:'line', data:{datasets:[]}, options:{responsive:true,interaction:{mode:'index',intersect:false},plugins:{tooltip:{enabled:true}},scales:{x:{type:'time',time:{unit:'month'}},y:{stacked:false}} } });
     }
 
     function getData(idx) {
@@ -116,25 +101,15 @@
     }
 
     function renderChart() {
-      const fillOpt=document.getElementById('stackToggle').checked;
-      chart.options.scales.y.stacked=fillOpt;
-      const indices=Array.from(selectedSeries).sort((a,b)=>a-b);
-      const datasets=indices.map(i=>({label:rawData.columns[i].column,data:getData(i),borderWidth:2,tension:0.3,fill:fillOpt?'origin':false,stack:fillOpt?'stack1':undefined}));
-      const pct=document.getElementById('pctToggle').checked;
-      const pctRR=document.getElementById('pctRRToggle').checked;
-      const infoBox=document.getElementById('changeInfo');
-      if(pct||pctRR){
-        const results=indices.map(i=>{const arr=getData(i);const last=arr[arr.length-1]?.y;let prev;if(pct)prev=arr[arr.length-2]?.y;else{const ld=new Date(arr[arr.length-1].x),ya=new Date(ld);ya.setFullYear(ld.getFullYear()-1);const m=arr.find(p=>{const d=new Date(p.x);return d.getFullYear()===ya.getFullYear()&&d.getMonth()===ya.getMonth();});prev=m?.y;}return((last-prev)/prev*100).toFixed(2);});
-        infoBox.textContent=(pct?'Δ %: ':'Δ r/r %: ')+results.join(' , ')+' %';infoBox.style.display='block';
-      } else infoBox.style.display='none';
-      chart.data.datasets=datasets;chart.update();
-    }
-
+      const fillOpt = document.getElementById('stackToggle').checked;
+      chart.options.scales.y.stacked = fillOpt;
+      const indices = Array.from(selectedSeries).sort((a,b)=>a-b);
+      const datasets = indices.map(i=>({label:rawData.columns[i].column,data:getData(i),borderWidth:2,tension:0.3,fill:fillOpt?'origin':false,stack:fillOpt?'stack1':undefined}));
+      const pct = document.getElementById('pctToggle').checked;
+      const pctRR = document.getElementById('pctRRToggle').checked;
+      const infoBox = document.getElementById('changeInfo');
+      if(pct||pctRR){const results=indices.map(i=>{const arr=getData(i);const last=arr[arr.length-1]?.y;let prev;if(pct)prev=arr[arr.length-2]?.y;else{const ld=new Date(arr[arr.length-1].x),ya=new Date(ld);ya.setFullYear(ld.getFullYear()-1);const match=arr.find(p=>{const d=new Date(p.x);return d.getFullYear()===ya.getFullYear()&&d.getMonth()===ya.getMonth();});prev=match?.y;}return((last-prev)/prev*100).toFixed(2);});infoBox.textContent=(pct?'Δ %: ':'Δ r/r %: ')+results.join(' , ')+' %';infoBox.style.display='block';}else infoBox.style.display='none';chart.data.datasets=datasets;chart.update();}
     loadData();
   </script>
-  <footer style="background:#fff; padding:0.5rem 1rem; text-align:center; font-size:0.8rem; color:#555; box-shadow:0 -2px 4px rgba(0,0,0,0.1);">
-    Źródło danych: <a href="https://nbp.pl/statystyka-i-sprawozdawczosc/statystyka-monetarna-i-finansowa/podaz-pieniadza-m3-i-czynniki-jego-kreacji/" target="_blank">nbp.pl/statystyka…kreacji</a><br>
-    Opracowanie: <a href="https://x.com/Dan_Kostecki" target="_blank">@Dan_Kostecki</a>
-  </footer>
 </body>
 </html>
