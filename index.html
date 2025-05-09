@@ -4,48 +4,44 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Podaż pieniądza w Polsce</title>
-    <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-    <style>
-        .tooltip {
-            position: absolute;
-            background: white;
-            border: 1px solid #ccc;
-            padding: 10px;
-            border-radius: 5px;
-            pointer-events: none;
-            z-index: 10;
-        }
-        #chart {
-            height: 400px !important; /* Ustawienie stałej wysokości dla wykresu */
-            width: 100%;
-        }
-    </style>
+    <link rel="stylesheet" href="styles.css">
 </head>
-<body class="bg-gray-100 font-sans">
-    <div class="container mx-auto p-4">
-        <h1 class="text-2xl font-bold mb-4">Podaż pieniądza w Polsce</h1>
+<body>
+    <div class="container">
+        <h1>Podaż pieniądza w Polsce</h1>
         <div class="mb-4">
-            <label class="block mb-2">Jeśli dane nie wczytały się automatycznie, wybierz plik JSON (np. am_data.json):</label>
-            <input type="file" id="fileInput" accept=".json" class="border p-2 rounded w-full" />
+            <label>Jeśli dane nie wczytały się automatycznie, wybierz plik JSON (np. am_data.json):</label>
+            <input type="file" id="fileInput" accept=".json" />
         </div>
-        <div id="error" class="bg-red-100 text-red-700 p-4 rounded mb-4 hidden"></div>
-        <div id="loading" class="bg-yellow-100 text-yellow-700 p-4 rounded mb-4">Wczytywanie danych...</div>
-        <div class="flex flex-col md:flex-row">
-            <div id="menu" class="w-full md:w-1/4 bg-white p-4 rounded shadow"></div>
-            <div class="w-full md:w-3/4 bg-white p-4 rounded shadow mt-4 md:mt-0 md:ml-4">
-                <h2 id="chartTitle" class="text-lg font-semibold mb-2">Pieniądz M3</h2>
-                <div id="chartControls" class="mb-4 hidden">
-                    <button id="backButton" class="bg-gray-500 text-white py-1 px-2 rounded hover:bg-gray-600">Wstecz</button>
+        <div id="error" class="error hidden"></div>
+        <div id="loading" class="loading">Wczytywanie danych...</div>
+        <div class="flex-container">
+            <div id="menu" class="menu"></div>
+            <div class="chart-section">
+                <h2 id="chartTitle">Pieniądz M3</h2>
+                <div class="chart-controls">
+                    <div id="chartControls" class="hidden">
+                        <button id="backButton">Wstecz</button>
+                    </div>
+                    <div>
+                        <label for="timeRange">Zakres czasowy:</label>
+                        <select id="timeRange">
+                            <option value="all">Wszystko</option>
+                            <option value="ytd">YTD</option>
+                            <option value="1y">1 rok</option>
+                            <option value="5y">5 lat</option>
+                            <option value="10y">10 lat</option>
+                        </select>
+                    </div>
                 </div>
                 <canvas id="chart"></canvas>
             </div>
         </div>
-        <footer class="mt-4 text-sm text-gray-600">
+        <footer>
             <p>Dane: Narodowy Bank Polski. M3 obejmuje M2, operacje repo, papiery dłużne i fundusze rynku pieniężnego.</p>
         </footer>
     </div>
-    <div id="tooltip" class="tooltip hidden"></div>
     <script>
         console.log("Ładowanie aplikacji...");
 
@@ -117,6 +113,7 @@
         let selectedCategory = hierarchy;
         let selectedPath = [23];
         let chart = null;
+        let timeRange = 'all'; // Domyślny zakres czasowy
 
         // Function to generate dates from period codes
         function getDateFromPeriod(period) {
@@ -125,6 +122,37 @@
             const date = new Date(startDate);
             date.setMonth(startDate.getMonth() + months);
             return date.toISOString().split("T")[0]; // YYYY-MM-DD
+        }
+
+        // Function to filter data by time range
+        function filterDataByTimeRange(fullData) {
+            if (!fullData || !fullData.length) return [];
+
+            const latestDate = new Date(fullData[fullData.length - 1].date);
+            let startDate;
+
+            switch (timeRange) {
+                case 'ytd':
+                    startDate = new Date(latestDate.getFullYear(), 0, 1); // Początek bieżącego roku
+                    break;
+                case '1y':
+                    startDate = new Date(latestDate);
+                    startDate.setFullYear(latestDate.getFullYear() - 1);
+                    break;
+                case '5y':
+                    startDate = new Date(latestDate);
+                    startDate.setFullYear(latestDate.getFullYear() - 5);
+                    break;
+                case '10y':
+                    startDate = new Date(latestDate);
+                    startDate.setFullYear(latestDate.getFullYear() - 10);
+                    break;
+                case 'all':
+                default:
+                    return fullData; // Wszystkie dane
+            }
+
+            return fullData.filter(d => new Date(d.date) >= startDate);
         }
 
         // Function to show/hide elements
@@ -144,7 +172,7 @@
         function renderMenu(node, parentElement, path = []) {
             const isSelected = path.includes(node.column_id);
             const button = document.createElement('button');
-            button.className = `text-left w-full py-1 px-2 rounded ${isSelected ? 'bg-blue-500 text-white' : 'hover:bg-gray-200'}`;
+            button.className = isSelected ? 'active' : '';
             button.textContent = node.name;
             button.title = node.name;
             button.addEventListener('click', () => handleSelectCategory(node));
@@ -152,7 +180,7 @@
 
             if (node.children && isSelected) {
                 const childrenDiv = document.createElement('div');
-                childrenDiv.className = 'ml-4';
+                childrenDiv.className = 'submenu';
                 node.children.forEach(child => renderMenu(child, childrenDiv, path));
                 parentElement.appendChild(childrenDiv);
             }
@@ -197,7 +225,7 @@
         function updateUI() {
             // Update menu
             const menu = document.getElementById('menu');
-            menu.innerHTML = '<h2 class="text-lg font-semibold mb-2">Kategorie</h2>';
+            menu.innerHTML = '<h2>Kategorie</h2>';
             renderMenu(hierarchy, menu, selectedPath);
 
             // Update chart title and controls
@@ -205,10 +233,12 @@
             showElement('chartControls', selectedPath.length > 1);
 
             // Update chart
-            const chartData = data?.columns?.find(col => col.column_id === selectedCategory.column_id)?.data.map(d => ({
+            const fullChartData = data?.columns?.find(col => col.column_id === selectedCategory.column_id)?.data.map(d => ({
                 date: d.date,
                 value: d.value
             })) || [];
+
+            const chartData = filterDataByTimeRange(fullChartData);
 
             if (chart) chart.destroy();
             const ctx = document.getElementById('chart').getContext('2d');
@@ -219,7 +249,7 @@
                     datasets: [{
                         label: selectedCategory.name,
                         data: chartData.map(d => d.value),
-                        borderColor: '#8884d8',
+                        borderColor: '#3b82f6',
                         fill: false,
                         tension: 0.1
                     }]
@@ -233,25 +263,23 @@
                     },
                     plugins: {
                         legend: { display: true },
-                        tooltip: { enabled: false }
-                    },
-                    onHover: (event, elements) => {
-                        const tooltip = document.getElementById('tooltip');
-                        if (elements.length > 0) {
-                            const element = elements[0];
-                            const dataset = element.dataset;
-                            const index = element.index;
-                            const value = dataset.data[index];
-                            const label = chart.data.labels[index];
-                            tooltip.innerHTML = `
-                                <p>Data: ${label}</p>
-                                <p>Wartość: ${value.toFixed(2)} mln zł</p>
-                            `;
-                            tooltip.style.left = `${event.x + 10}px`;
-                            tooltip.style.top = `${event.y + 10}px`;
-                            showElement('tooltip', true);
-                        } else {
-                            showElement('tooltip', false);
+                        tooltip: {
+                            enabled: true,
+                            backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                            titleColor: '#333',
+                            bodyColor: '#333',
+                            borderColor: '#ccc',
+                            borderWidth: 1,
+                            cornerRadius: 5,
+                            callbacks: {
+                                label: function(context) {
+                                    const value = context.parsed.y;
+                                    return `Wartość: ${value.toFixed(2)} mln zł`;
+                                },
+                                title: function(tooltipItems) {
+                                    return `Data: ${tooltipItems[0].label}`;
+                                }
+                            }
                         }
                     }
                 }
@@ -321,6 +349,12 @@
                 }
             };
             reader.readAsText(file);
+        });
+
+        // Handle time range selection
+        document.getElementById('timeRange').addEventListener('change', (event) => {
+            timeRange = event.target.value;
+            updateUI();
         });
 
         // Add event listener for back button
