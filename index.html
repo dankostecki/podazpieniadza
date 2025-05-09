@@ -61,14 +61,13 @@
         btn.addEventListener('click', () => {
           document.querySelectorAll('#rangeButtons button').forEach(b => b.classList.remove('active'));
           btn.classList.add('active');
-          updateChart();
+          showActiveSeries();
         });
       });
       document.querySelector('button[data-range="ALL"]').classList.add('active');
       createChart();
-      // Default: check M3
-      const defaultCb = document.querySelector('input[data-index="22"]');
-      if (defaultCb) { defaultCb.checked = true; updateChart(); }
+      // Default: show M3
+      setTimeout(() => { document.querySelector('[data-index="22"]').click(); }, 100);
     }
 
     function buildTree() {
@@ -109,31 +108,23 @@
           const li = document.createElement('li');
           const div = document.createElement('div');
           div.classList.add('node');
-          // Checkbox for selectable nodes
           if (node.index !== null) {
             const cb = document.createElement('input');
-            cb.type = 'checkbox';
-            cb.classList.add('checkbox');
-            cb.dataset.index = node.index;
-            cb.addEventListener('change', updateChart);
+            cb.type = 'checkbox'; cb.classList.add('checkbox'); cb.dataset.index = node.index;
+            cb.addEventListener('change', updateOverlay);
             div.appendChild(cb);
           }
-          // Label
-          const span = document.createElement('span');
-          span.textContent = node.name;
+          const span = document.createElement('span'); span.textContent = node.name;
           div.appendChild(span);
-          // Highlight on click
           div.addEventListener('click', e => {
             e.stopPropagation();
             document.querySelectorAll('.node').forEach(n => n.classList.remove('active'));
             div.classList.add('active');
+            if (node.index !== null) showActiveSeries();
           });
-          li.appendChild(div);
-          parent.appendChild(li);
-          // Children
+          li.appendChild(div); parent.appendChild(li);
           if (node.children) {
-            const ul = document.createElement('ul');
-            li.appendChild(ul);
+            const ul = document.createElement('ul'); li.appendChild(ul);
             render(node.children, ul);
           }
         });
@@ -144,40 +135,53 @@
     function createChart() {
       const ctx = document.getElementById('moneyChart').getContext('2d');
       chart = new Chart(ctx, {
-        type: 'line',
-        data: { datasets: [] },
-        options: {
-          responsive: true,
-          interaction: { mode: 'index', intersect: false },
-          plugins: { tooltip: { enabled: true } },
-          scales: { x: { type: 'time', time: { unit: 'month' }} }
+        type: 'line', data: { datasets: [] }, options: {
+          responsive: true, interaction: { mode: 'index', intersect: false },
+          plugins: { tooltip: { enabled: true } }, scales: { x: { type: 'time', time: { unit: 'month' }}}
         }
       });
     }
 
-    function updateChart() {
+    function getFilteredData(idx) {
+      const col = rawData.columns[idx]; let data = col.data;
       const range = document.querySelector('#rangeButtons .active').dataset.range;
-      const now = new Date(); let startDate = null;
+      const now = new Date(); let start;
       switch (range) {
-        case 'YTD': startDate = new Date(now.getFullYear(),0,1); break;
-        case '1Y': startDate = new Date(now.getFullYear()-1,now.getMonth(),now.getDate()); break;
-        case '5Y': startDate = new Date(now.getFullYear()-5,now.getMonth(),now.getDate()); break;
-        case '10Y': startDate = new Date(now.getFullYear()-10,now.getMonth(),now.getDate()); break;
+        case 'YTD': start = new Date(now.getFullYear(),0,1); break;
+        case '1Y': start = new Date(now.getFullYear()-1, now.getMonth(), now.getDate()); break;
+        case '5Y': start = new Date(now.getFullYear()-5, now.getMonth(), now.getDate()); break;
+        case '10Y': start = new Date(now.getFullYear()-10, now.getMonth(), now.getDate()); break;
       }
-      const checked = Array.from(document.querySelectorAll('input[type="checkbox"]:checked'));
-      chart.data.datasets = checked.map(cb => {
-        const idx = parseInt(cb.dataset.index,10);
-        const col = rawData.columns[idx];
-        let data = col.data;
-        if (startDate) data = data.filter(d => new Date(d.date) >= startDate);
-        return {
-          label: col.column,
-          data: data.map(d=>({x: d.date, y: d.value})),
-          borderWidth: 2,
-          tension: 0.3,
-          fill: false
-        };
+      if (start) data = data.filter(d => new Date(d.date) >= start);
+      return data.map(d => ({ x: d.date, y: d.value }));
+    }
+
+    function showActiveSeries() {
+      const active = document.querySelector('.node.active');
+      if (!active || !active.querySelector('input')) return;
+      const idx = parseInt(active.querySelector('input').dataset.index, 10);
+      chart.data.datasets = [{ label: rawData.columns[idx].column, data: getFilteredData(idx), borderWidth: 2, tension: 0.3, fill: false }];
+      // uncheck all overlays
+      document.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = false);
+      chart.update();
+    }
+
+    function updateOverlay() {
+      const datasets = [];
+      // base: active series
+      const active = document.querySelector('.node.active');
+      if (active && active.querySelector('input')) {
+        const idx0 = parseInt(active.querySelector('input').dataset.index, 10);
+        datasets.push({ label: rawData.columns[idx0].column, data: getFilteredData(idx0), borderWidth: 2, tension: 0.3, fill: false });
+      }
+      // overlays
+      document.querySelectorAll('input[type=checkbox]:checked').forEach(cb => {
+        const idx = parseInt(cb.dataset.index, 10);
+        if (!active || idx !== parseInt(active.querySelector('input').dataset.index,10)) {
+          datasets.push({ label: rawData.columns[idx].column, data: getFilteredData(idx), borderWidth: 2, tension: 0.3, fill: false });
+        }
       });
+      chart.data.datasets = datasets;
       chart.update();
     }
 
