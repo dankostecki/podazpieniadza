@@ -6,8 +6,9 @@
   <title>Miary Podaży Pieniądza w Polsce</title>
   <!-- Google Font -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-  <!-- Chart.js & Date Adapter -->
+  <!-- Chart.js, Adapter, Zoom Plugin -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom/dist/chartjs-plugin-zoom.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/dist/date-fns.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
   <style>
@@ -17,186 +18,200 @@
     #sidebar { width: 300px; background: #fff; padding: 1rem; box-shadow: 2px 0 4px rgba(0,0,0,0.1); overflow-y: auto; }
     #sidebar ul { list-style: none; padding: 0; margin: 0; }
     #sidebar li { margin: 0.3rem 0; }
-    #sidebar .node { display: flex; align-items: center; cursor: pointer; border-radius: 6px; padding: 0.4rem 0.6rem; }
+    #sidebar .node { cursor: pointer; padding: 0.4rem 0.6rem; border-radius: 6px; }
     #sidebar .node:hover { background: #e6f0ff; }
-    #sidebar .node.active > span { font-weight: 600; }
-    #sidebar ul ul { padding-left: 1rem; display: block; }
-    #main { flex: 1; padding: 1rem; display: flex; flex-direction: column; }
-    .controls { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem; }
-    .controls button, .controls label { flex: 1; text-align: center; }
-    .controls button { padding: 0.5rem; border-radius: 8px; border: 1px solid #ddd; background: #fff; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.05); font-size: 0.9rem; }
-    .controls button.active { background: #007bff; color: #fff; border-color: #007bff; }
-    .controls label { display: flex; align-items: center; justify-content: center; font-size: 0.9rem; cursor: pointer; }
-    .controls input[type="checkbox"] { margin-left: 0.5rem; }
-    .chart-container { flex: 1; background: #fff; padding: 1rem; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-    h1 { margin: 0; font-weight: 600; font-size: 1.5rem; }
-    .checkbox { margin-right: 0.5rem; }
+    #sidebar .node.active { font-weight: 600; background: #ddeeff; }
+    #sidebar ul ul { padding-left: 1rem; }
+    #main { flex: 1; display: flex; flex-direction: column; }
+    .controls { display: flex; background: #f0f0f0; padding: 0.5rem; align-items: center; }
+    .controls button { flex: 1; margin: 0 0.25rem; padding: 0.5rem; border: none; border-radius: 6px; background: #fff; cursor: pointer; font-size: 0.9rem; }
+    .controls button.active { background: #007bff; color: #fff; }
+    .controls label { margin: 0 0.5rem; font-size: 0.9rem; cursor: pointer; display: flex; align-items: center; }
+    .controls input[type="checkbox"] { margin-left: 0.3rem; }
+    .chart-container { flex: 1; padding: 1rem; position: relative; }
+    canvas { background: #fff; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 100% !important; height: 100% !important; }
+    #changeInfo { position: absolute; top: 10px; right: 20px; background: rgba(255,255,255,0.8); padding: 0.3rem 0.6rem; border-radius: 4px; font-weight: 600; display: none; }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Miary Podaży Pieniądza w Polsce</h1>
-  </header>
+  <header><h1>Miary Podaży Pieniądza w Polsce</h1></header>
   <div class="wrapper">
-    <aside id="sidebar">
-      <ul id="treeMenu"></ul>
-    </aside>
+    <aside id="sidebar"><ul id="treeMenu"></ul></aside>
     <main id="main">
-      <div class="controls" id="rangeButtons">
+      <div class="controls">
         <button data-range="YTD">Od początku roku</button>
         <button data-range="1Y">1 rok</button>
         <button data-range="5Y">5 lat</button>
         <button data-range="10Y">10 lat</button>
-        <button data-range="ALL">Cały okres</button>
+        <button data-range="ALL" class="active">Cały okres</button>
         <label>Stacked<input type="checkbox" id="stackToggle"></label>
+        <label>Zmiana %<input type="checkbox" id="pctToggle"></label>
+        <label>Zmiana r/r<input type="checkbox" id="pctRRToggle"></label>
       </div>
       <div class="chart-container">
         <canvas id="moneyChart"></canvas>
+        <div id="changeInfo"></div>
       </div>
     </main>
   </div>
   <script>
+    // Global state
     let rawData, chart;
+    const selectedSeries = new Set();
+
     async function loadData() {
-      rawData = await fetch('am_data.json').then(res => res.json());
+      rawData = await fetch('am_data.json').then(r => r.json());
       buildTree();
       setupControls();
       createChart();
-      // default: show M3
-      setTimeout(() => document.querySelector('[data-index="22"]').click(), 100);
+      // default select M3
+      const defaultNode = document.querySelector('[data-index="22"]');
+      if (defaultNode) defaultNode.click();
     }
 
     function setupControls() {
-      document.querySelectorAll('#rangeButtons button').forEach(btn => {
+      document.querySelectorAll('.controls button[data-range]').forEach(btn => {
         btn.addEventListener('click', () => {
-          document.querySelectorAll('#rangeButtons button').forEach(b => b.classList.remove('active'));
+          document.querySelectorAll('.controls button[data-range]').forEach(b => b.classList.remove('active'));
           btn.classList.add('active');
-          showActiveSeries();
+          renderChart();
         });
       });
-      document.querySelector('button[data-range="ALL"]').classList.add('active');
-      document.getElementById('stackToggle').addEventListener('change', () => {
-        chart.options.scales.y.stacked = document.getElementById('stackToggle').checked;
-        chart.data.datasets.forEach(ds => ds.stack = document.getElementById('stackToggle').checked ? 'stack1' : undefined);
-        chart.update();
+      document.getElementById('stackToggle').addEventListener('change', renderChart);
+      document.getElementById('pctToggle').addEventListener('change', e => {
+        if (e.target.checked) document.getElementById('pctRRToggle').checked = false;
+        renderChart();
+      });
+      document.getElementById('pctRRToggle').addEventListener('change', e => {
+        if (e.target.checked) document.getElementById('pctToggle').checked = false;
+        renderChart();
       });
     }
 
     function buildTree() {
       const cols = rawData.columns;
-      const treeData = [
-        { name: 'Pieniądz M3', index: 22, children: [
-          { name: 'Dodatkowe komponenty M3', index: null, children: [
-            { name: cols[19].column, index: 19 },
-            { name: cols[20].column, index: 20 },
-            { name: cols[21].column, index: 21 }
-          ]},
-          { name: 'Pieniądz M2', index: 18, children: [
-            { name: 'Depozyty do 2 lat', index: 11, children: [
-              { name: cols[12].column, index: 12 },
-              { name: cols[13].column, index: 13 },
-              { name: cols[14].column, index: 14 },
-              { name: cols[15].column, index: 15 },
-              { name: cols[16].column, index: 16 },
-              { name: cols[17].column, index: 17 }
-            ]},
-            { name: 'Pieniądz M1', index: 10, children: [
-              { name: 'Depozyty bieżące', index: 3, children: [
-                { name: cols[4].column, index: 4 },
-                { name: cols[5].column, index: 5 },
-                { name: cols[6].column, index: 6 },
-                { name: cols[7].column, index: 7 },
-                { name: cols[8].column, index: 8 },
-                { name: cols[9].column, index: 9 }
-              ]},
-              { name: cols[0].column, index: 0 }
-            ]}
+      const treeData = [{ name: 'Pieniądz M3', index: 22, children: [
+        { name: 'Dodatkowe komponenty M3', index: null, children: [
+          { name: cols[19].column, index: 19 }, { name: cols[20].column, index: 20 }, { name: cols[21].column, index: 21 }
+        ]},
+        { name: 'Pieniądz M2', index: 18, children: [
+          { name: 'Depozyty do 2 lat', index: 11, children: cols.slice(12,18).map((c,i)=>({ name: c.column, index:12+i })) },
+          { name: 'Pieniądz M1', index: 10, children: [
+            { name: 'Depozyty bieżące', index: 3, children: cols.slice(4,10).map((c,i)=>({ name:c.column, index:4+i })) },
+            { name: cols[0].column, index: 0 }
           ]}
         ]}
-      ];
+      ]}];
 
       function render(nodes, parent) {
-        nodes.forEach(node => {
+        nodes.forEach(n => {
           const li = document.createElement('li');
           const div = document.createElement('div'); div.classList.add('node');
-          if (node.index !== null) {
-            const cb = document.createElement('input'); cb.type = 'checkbox'; cb.classList.add('checkbox'); cb.dataset.index = node.index;
-            cb.addEventListener('click', e => e.stopPropagation());
-            cb.addEventListener('change', updateOverlay);
+          if (n.index !== null) {
+            const cb = document.createElement('input'); cb.type = 'checkbox'; cb.dataset.index = n.index;
+            cb.addEventListener('click', e => {
+              e.stopPropagation();
+              if (cb.checked) selectedSeries.add(n.index);
+              else selectedSeries.delete(n.index);
+              renderChart();
+            });
             div.appendChild(cb);
           }
-          const span = document.createElement('span'); span.textContent = node.name; div.appendChild(span);
+          const span = document.createElement('span'); span.textContent = n.name; div.appendChild(span);
+          div.setAttribute('data-index', n.index);
           div.addEventListener('click', e => {
             e.stopPropagation();
-            document.querySelectorAll('.node').forEach(n => n.classList.remove('active'));
+            // mark active
+            document.querySelectorAll('.node').forEach(x=>x.classList.remove('active'));
             div.classList.add('active');
-            showActiveSeries();
+            // ensure main series is selected
+            if (n.index !== null) selectedSeries.add(n.index);
+            renderChart();
           });
           li.appendChild(div); parent.appendChild(li);
-          if (node.children) {
-            const ul = document.createElement('ul'); li.appendChild(ul); render(node.children, ul);
-          }
+          if (n.children) { const ul = document.createElement('ul'); li.appendChild(ul); render(n.children, ul); }
         });
       }
       render(treeData, document.getElementById('treeMenu'));
     }
 
     function createChart() {
+      Chart.register(ChartZoom);
       const ctx = document.getElementById('moneyChart').getContext('2d');
       chart = new Chart(ctx, {
         type: 'line', data: { datasets: [] }, options: {
           responsive: true,
           interaction: { mode: 'index', intersect: false },
-          plugins: { tooltip: { enabled: true } },
+          plugins: {
+            tooltip: { enabled: true },
+            zoom: {
+              zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
+              pan: { enabled: true, mode: 'x' }
+            }
+          },
           scales: { x: { type: 'time', time: { unit: 'month' }}, y: { stacked: false }}
         }
       });
     }
 
-    function getFilteredData(idx) {
-      const col = rawData.columns[idx]; let data = col.data;
-      const range = document.querySelector('#rangeButtons .active').dataset.range;
+    function getData(idx) {
+      const col = rawData.columns[idx];
+      let arr = col.data.map(d=>({ x: d.date, y: d.value }));
+      const range = document.querySelector('.controls button.active').dataset.range;
       const now = new Date(); let start;
-      switch (range) {
+      switch(range) {
         case 'YTD': start = new Date(now.getFullYear(),0,1); break;
         case '1Y': start = new Date(now.getFullYear()-1, now.getMonth(), now.getDate()); break;
         case '5Y': start = new Date(now.getFullYear()-5, now.getMonth(), now.getDate()); break;
         case '10Y': start = new Date(now.getFullYear()-10, now.getMonth(), now.getDate()); break;
       }
-      if (start) data = data.filter(d => new Date(d.date) >= start);
-      return data.map(d => ({ x: d.date, y: d.value }));
+      return start ? arr.filter(p=>new Date(p.x)>=start) : arr;
     }
 
-    function showActiveSeries() {
-      const active = document.querySelector('.node.active');
-      if (!active || !active.querySelector('input')) return;
-      const idx = parseInt(active.querySelector('input').dataset.index, 10);
+    function renderChart() {
       const fillOpt = document.getElementById('stackToggle').checked;
-      chart.data.datasets = [{
-        label: rawData.columns[idx].column,
-        data: getFilteredData(idx),
+      chart.options.scales.y.stacked = fillOpt;
+
+      // Collect series to show
+      const indices = Array.from(selectedSeries);
+      // Sort to keep consistent order
+      indices.sort((a,b)=>a-b);
+
+      // Build datasets
+      const datasets = indices.map(i => ({
+        label: rawData.columns[i].column,
+        data: getData(i),
         borderWidth: 2,
         tension: 0.3,
         fill: fillOpt ? 'origin' : false,
         stack: fillOpt ? 'stack1' : undefined
-      }];
-      // clear overlays
-      document.querySelectorAll('#treeMenu input[type="checkbox"]').forEach(cb => cb.checked = false);
-      chart.update();
-    }
+      }));
 
-    function updateOverlay() {
-      const datasets = [];
-      const active = document.querySelector('.node.active');
-      const fillOpt = document.getElementById('stackToggle').checked;
-      if (active && active.querySelector('input')) {
-        const idx0 = parseInt(active.querySelector('input').dataset.index, 10);
-        datasets.push({ label: rawData.columns[idx0].column, data: getFilteredData(idx0), borderWidth: 2, tension: 0.3, fill: fillOpt ? 'origin' : false, stack: fillOpt ? 'stack1' : undefined });
+      // Percentage info for all selected
+      const pct = document.getElementById('pctToggle').checked;
+      const pctRR = document.getElementById('pctRRToggle').checked;
+      const infoBox = document.getElementById('changeInfo');
+      if (pct || pctRR) {
+        const results = indices.map(i => {
+          const arr = getData(i);
+          const last = arr[arr.length-1]?.y;
+          let prev;
+          if (pct) prev = arr[arr.length-2]?.y;
+          else {
+            const ld = new Date(arr[arr.length-1].x);
+            const ya = new Date(ld); ya.setFullYear(ld.getFullYear()-1);
+            const match = arr.find(p=>{const d=new Date(p.x);return d.getFullYear()===ya.getFullYear()&&d.getMonth()===ya.getMonth();});
+            prev = match?.y;
+          }
+          return ((last-prev)/prev*100).toFixed(2);
+        });
+        infoBox.textContent = (pct ? 'Δ %: ' : 'Δ r/r %: ') + results.join(' , ') + ' %';
+        infoBox.style.display = 'block';
+      } else {
+        infoBox.style.display = 'none';
       }
-      document.querySelectorAll('#treeMenu input[type="checkbox"]:checked').forEach(cb => {
-        const idx = parseInt(cb.dataset.index, 10);
-        datasets.push({ label: rawData.columns[idx].column, data: getFilteredData(idx), borderWidth: 2, tension: 0.3, fill: fillOpt ? 'origin' : false, stack: fillOpt ? 'stack1' : undefined });
-      });
+
+      // Update chart
       chart.data.datasets = datasets;
       chart.update();
     }
