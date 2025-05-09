@@ -17,10 +17,9 @@
     #sidebar { width: 300px; background: #fff; padding: 1rem; box-shadow: 2px 0 4px rgba(0,0,0,0.1); overflow-y: auto; }
     #sidebar ul { list-style: none; padding: 0; margin: 0; }
     #sidebar li { margin: 0.3rem 0; }
-    #sidebar .node { cursor: pointer; border-radius: 6px; padding: 0.4rem 0.6rem; }
+    #sidebar .node { display: flex; align-items: center; cursor: pointer; border-radius: 6px; padding: 0.4rem 0.6rem; }
     #sidebar .node:hover { background: #e6f0ff; }
     #sidebar .node.active > span { font-weight: 600; }
-    #sidebar .category > span { font-weight: 600; }
     #sidebar ul ul { padding-left: 1rem; display: block; }
     #main { flex: 1; padding: 1rem; display: flex; flex-direction: column; }
     .controls { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
@@ -28,6 +27,7 @@
     .controls button.active { background: #007bff; color: #fff; border-color: #007bff; }
     .chart-container { flex: 1; background: #fff; padding: 1rem; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
     h1 { margin: 0; font-weight: 600; font-size: 1.5rem; }
+    .checkbox { margin-right: 0.5rem; }
   </style>
 </head>
 <body>
@@ -56,6 +56,7 @@
     async function loadData() {
       rawData = await fetch('am_data.json').then(res => res.json());
       buildTree();
+      // Range buttons
       document.querySelectorAll('#rangeButtons button').forEach(btn => {
         btn.addEventListener('click', () => {
           document.querySelectorAll('#rangeButtons button').forEach(b => b.classList.remove('active'));
@@ -63,12 +64,11 @@
           updateChart();
         });
       });
-      // default range
       document.querySelector('button[data-range="ALL"]').classList.add('active');
       createChart();
-      // default selection: M3
-      const defaultNode = document.querySelector('[data-index="22"]');
-      if (defaultNode) defaultNode.click();
+      // Default: check M3
+      const defaultCb = document.querySelector('input[data-index="22"]');
+      if (defaultCb) { defaultCb.checked = true; updateChart(); }
     }
 
     function buildTree() {
@@ -81,7 +81,7 @@
               { name: cols[21].column, index: 21 }
             ]},
             { name: 'Pieniądz M2', index: 18, children: [
-              { name: 'Depozyty do 2 lat', index: null, children: [
+              { name: 'Depozyty do 2 lat', index: 11, children: [
                 { name: cols[12].column, index: 12 },
                 { name: cols[13].column, index: 13 },
                 { name: cols[14].column, index: 14 },
@@ -90,7 +90,7 @@
                 { name: cols[17].column, index: 17 }
               ]},
               { name: 'Pieniądz M1', index: 10, children: [
-                { name: 'Depozyty bieżące', index: null, children: [
+                { name: 'Depozyty bieżące', index: 3, children: [
                   { name: cols[4].column, index: 4 },
                   { name: cols[5].column, index: 5 },
                   { name: cols[6].column, index: 6 },
@@ -103,30 +103,34 @@
             ]}
           ]}
       ];
-      const tree = document.getElementById('treeMenu');
 
       function render(nodes, parent) {
         nodes.forEach(node => {
           const li = document.createElement('li');
           const div = document.createElement('div');
           div.classList.add('node');
-          if (node.index !== null) div.dataset.index = node.index;
-          if (node.children) div.classList.add('category');
-
+          // Checkbox for selectable nodes
+          if (node.index !== null) {
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.classList.add('checkbox');
+            cb.dataset.index = node.index;
+            cb.addEventListener('change', updateChart);
+            div.appendChild(cb);
+          }
+          // Label
           const span = document.createElement('span');
           span.textContent = node.name;
           div.appendChild(span);
-
+          // Highlight on click
           div.addEventListener('click', e => {
             e.stopPropagation();
             document.querySelectorAll('.node').forEach(n => n.classList.remove('active'));
             div.classList.add('active');
-            if (node.index !== null) updateChart();
           });
-
           li.appendChild(div);
           parent.appendChild(li);
-
+          // Children
           if (node.children) {
             const ul = document.createElement('ul');
             li.appendChild(ul);
@@ -134,15 +138,14 @@
           }
         });
       }
-
-      render(treeData, tree);
+      render(treeData, document.getElementById('treeMenu'));
     }
 
     function createChart() {
       const ctx = document.getElementById('moneyChart').getContext('2d');
       chart = new Chart(ctx, {
         type: 'line',
-        data: { labels: [], datasets: [] },
+        data: { datasets: [] },
         options: {
           responsive: true,
           interaction: { mode: 'index', intersect: false },
@@ -153,22 +156,28 @@
     }
 
     function updateChart() {
-      const activeNode = document.querySelector('.node.active');
-      if (!activeNode || !activeNode.dataset.index) return;
-      const idx = parseInt(activeNode.dataset.index, 10);
-      const col = rawData.columns[idx];
       const range = document.querySelector('#rangeButtons .active').dataset.range;
       const now = new Date(); let startDate = null;
       switch (range) {
-        case 'YTD': startDate = new Date(now.getFullYear(), 0, 1); break;
-        case '1Y': startDate = new Date(now.getFullYear()-1, now.getMonth(), now.getDate()); break;
-        case '5Y': startDate = new Date(now.getFullYear()-5, now.getMonth(), now.getDate()); break;
-        case '10Y': startDate = new Date(now.getFullYear()-10, now.getMonth(), now.getDate()); break;
+        case 'YTD': startDate = new Date(now.getFullYear(),0,1); break;
+        case '1Y': startDate = new Date(now.getFullYear()-1,now.getMonth(),now.getDate()); break;
+        case '5Y': startDate = new Date(now.getFullYear()-5,now.getMonth(),now.getDate()); break;
+        case '10Y': startDate = new Date(now.getFullYear()-10,now.getMonth(),now.getDate()); break;
       }
-      let data = col.data;
-      if (startDate) data = data.filter(d => new Date(d.date) >= startDate);
-      chart.data.labels = data.map(d => d.date);
-      chart.data.datasets = [{ label: col.column, data: data.map(d => d.value), borderWidth: 2, tension: 0.3 }];
+      const checked = Array.from(document.querySelectorAll('input[type="checkbox"]:checked'));
+      chart.data.datasets = checked.map(cb => {
+        const idx = parseInt(cb.dataset.index,10);
+        const col = rawData.columns[idx];
+        let data = col.data;
+        if (startDate) data = data.filter(d => new Date(d.date) >= startDate);
+        return {
+          label: col.column,
+          data: data.map(d=>({x: d.date, y: d.value})),
+          borderWidth: 2,
+          tension: 0.3,
+          fill: false
+        };
+      });
       chart.update();
     }
 
