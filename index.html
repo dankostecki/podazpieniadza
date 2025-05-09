@@ -1,364 +1,105 @@
 <!DOCTYPE html>
 <html lang="pl">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Podaż pieniądza w Polsce</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-    <link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Miary Podaży Pieniądza w Polsce</title>
+  <!-- Google Font -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: 'Inter', sans-serif; background: #f5f5f5; margin: 0; padding: 0; }
+    header { background: #fff; padding: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .container { max-width: 1200px; margin: auto; padding: 1rem; }
+    .chart-container { position: relative; background: #fff; padding: 1rem; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .controls { display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem; }
+    select, button { padding: 0.5rem 1rem; border-radius: 8px; border: 1px solid #ddd; background: #fff; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.05); font-size: 1rem; }
+    button.active { background: #007bff; color: #fff; border-color: #007bff; }
+    h1 { margin: 0; font-weight: 600; font-size: 1.5rem; }
+  </style>
 </head>
 <body>
+  <header>
     <div class="container">
-        <h1>Podaż pieniądza w Polsce</h1>
-        <div class="flex-container">
-            <div id="menu" class="menu"></div>
-            <div class="chart-section">
-                <h2 id="chartTitle">Pieniądz M3</h2>
-                <div class="chart-controls">
-                    <div id="chartControls" class="hidden">
-                        <button id="backButton">Wstecz</button>
-                    </div>
-                    <div>
-                        <select id="timeRange">
-                            <option value="all">Wszystko</option>
-                            <option value="ytd">YTD</option>
-                            <option value="1y">1 rok</option>
-                            <option value="5y">5 lat</option>
-                            <option value="10y">10 lat</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="chart-wrapper">
-                    <canvas id="chart"></canvas>
-                </div>
-            </div>
-        </div>
-        <footer>
-            <p>Dane: Narodowy Bank Polski. M3 obejmuje M2, operacje repo, papiery dłużne i fundusze rynku pieniężnego.</p>
-        </footer>
+      <h1>Miary Podaży Pieniądza w Polsce</h1>
     </div>
-    <script>
-        console.log("Ładowanie aplikacji...");
-
-        // Sprawdzenie, czy Chart.js się załadował
-        if (typeof Chart === 'undefined') {
-            console.error("Błąd: Chart.js nie załadował się poprawnie.");
-            alert("Błąd: Chart.js nie załadował się poprawnie. Sprawdź połączenie z internetem.");
-        } else {
-            console.log("Chart.js załadowany poprawnie:", Chart.version);
-        }
-
-        // Sprawdzenie, czy styles.css się załadował
-        const stylesLoaded = Array.from(document.styleSheets).some(sheet => {
-            return sheet.href && sheet.href.includes('styles.css');
+  </header>
+  <main class="container">
+    <div class="controls">
+      <select id="categorySelect"></select>
+      <div id="rangeButtons">
+        <button data-range="YTD">Od początku roku</button>
+        <button data-range="1Y">1 rok</button>
+        <button data-range="5Y">5 lat</button>
+        <button data-range="10Y">10 lat</button>
+        <button data-range="ALL">Cały okres</button>
+      </div>
+    </div>
+    <div class="chart-container">
+      <canvas id="moneyChart"></canvas>
+    </div>
+  </main>
+  <script>
+    let rawData;
+    let chart;
+    async function loadData() {
+      rawData = await fetch('am_data.json').then(res => res.json());
+      const select = document.getElementById('categorySelect');
+      rawData.columns.forEach((c, i) => {
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = c.column;
+        select.appendChild(opt);
+      });
+      select.addEventListener('change', updateChart);
+      document.querySelectorAll('#rangeButtons button').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('#rangeButtons button').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          updateChart();
         });
-        if (!stylesLoaded) {
-            console.error("Błąd: Plik styles.css nie załadował się poprawnie.");
-            alert("Błąd: Plik styles.css nie załadował się poprawnie. Sprawdź, czy plik istnieje w repozytorium.");
-        } else {
-            console.log("Plik styles.css załadowany poprawnie.");
+      });
+      createChart();
+    }
+
+    function createChart() {
+      const ctx = document.getElementById('moneyChart').getContext('2d');
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: { labels: [], datasets: [{ label: '', data: [], borderWidth: 2, tension: 0.3 }] },
+        options: {
+          responsive: true,
+          interaction: { mode: 'index', intersect: false },
+          plugins: { tooltip: { enabled: true } },
+          scales: { x: { type: 'time', time: { unit: 'month' }} }
         }
+      });
+      updateChart();
+    }
 
-        // Hierarchy definition
-        const hierarchy = {
-            name: "Pieniądz M3",
-            column_id: 23,
-            children: [
-                {
-                    name: "Pieniądz M2",
-                    column_id: 19,
-                    children: [
-                        {
-                            name: "Pieniądz M1",
-                            column_id: 11,
-                            children: [
-                                {
-                                    name: "Gotówka w obiegu (poza kasami MIF)",
-                                    column_id: 1,
-                                    children: [
-                                        { name: "Gotówka w obiegu (z kasami MIF)", column_id: 2 },
-                                        { name: "Gotówka w kasach MIF", column_id: 3 }
-                                    ]
-                                },
-                                {
-                                    name: "Depozyty bieżące",
-                                    column_id: 4,
-                                    children: [
-                                        { name: "Gospodarstwa domowe", column_id: 5 },
-                                        { name: "Pozostałe instytucje finansowe", column_id: 6 },
-                                        { name: "Przedsiębiorstwa niefinansowe", column_id: 7 },
-                                        { name: "Instytucje niekomercyjne", column_id: 8 },
-                                        { name: "Instytucje samorządowe", column_id: 9 },
-                                        { name: "Fundusze zabezpieczenia społecznego", column_id: 10 }
-                                    ]
-                                }
-                            ]
-                        },
-                        {
-                            name: "Depozyty do 2 lat",
-                            column_id: 12,
-                            children: [
-                                { name: "Gospodarstwa domowe", column_id: 13 },
-                                { name: "Pozostałe instytucje finansowe", column_id: 14 },
-                                { name: "Przedsiębiorstwa niefinansowe", column_id: 15 },
-                                { name: "Instytucje niekomercyjne", column_id: 16 },
-                                { name: "Instytucje samorządowe", column_id: 17 },
-                                { name: "Fundusze zabezpieczenia społecznego", column_id: 18 }
-                            ]
-                        }
-                    ]
-                },
-                { name: "Operacje z przyrzeczeniem odkupu", column_id: 20 },
-                { name: "Emisja dłużnych papierów wartościowych do 2 lat", column_id: 21 },
-                { name: "Emisja udziałów w funduszach rynku pieniężnego", column_id: 22 }
-            ]
-        };
+    function updateChart() {
+      const sel = document.getElementById('categorySelect');
+      const col = rawData.columns[sel.value];
+      const now = new Date();
+      let startDate;
+      const active = document.querySelector('#rangeButtons button.active');
+      const range = active ? active.dataset.range : 'ALL';
+      switch (range) {
+        case 'YTD': startDate = new Date(now.getFullYear(), 0, 1); break;
+        case '1Y': startDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()); break;
+        case '5Y': startDate = new Date(now.getFullYear() - 5, now.getMonth(), now.getDate()); break;
+        case '10Y': startDate = new Date(now.getFullYear() - 10, now.getMonth(), now.getDate()); break;
+        default: startDate = new Date(col.data[0].date);
+      }
+      const filtered = col.data.filter(d => new Date(d.date) >= startDate);
+      chart.data.labels = filtered.map(d => d.date);
+      chart.data.datasets[0].data = filtered.map(d => d.value);
+      chart.data.datasets[0].label = col.column;
+      chart.update();
+    }
 
-        // State
-        let data = null;
-        let selectedCategory = hierarchy;
-        let selectedPath = [23];
-        let chart = null;
-        let timeRange = 'all'; // Domyślny zakres czasowy
-
-        // Function to generate dates from period codes
-        function getDateFromPeriod(period) {
-            const startDate = new Date(1996, 11, 31); // 1996-12-31 corresponds to period 35430
-            const months = Math.floor((period - 35430) / 30.42); // Approximate months
-            const date = new Date(startDate);
-            date.setMonth(startDate.getMonth() + months);
-            return date.toISOString().split("T")[0]; // YYYY-MM-DD
-        }
-
-        // Function to filter data by time range
-        function filterDataByTimeRange(fullData) {
-            if (!fullData || !fullData.length) return [];
-
-            const latestDate = new Date(fullData[fullData.length - 1].date);
-            let startDate;
-
-            switch (timeRange) {
-                case 'ytd':
-                    startDate = new Date(latestDate.getFullYear(), 0, 1); // Początek bieżącego roku
-                    break;
-                case '1y':
-                    startDate = new Date(latestDate);
-                    startDate.setFullYear(latestDate.getFullYear() - 1);
-                    break;
-                case '5y':
-                    startDate = new Date(latestDate);
-                    startDate.setFullYear(latestDate.getFullYear() - 5);
-                    break;
-                case '10y':
-                    startDate = new Date(latestDate);
-                    startDate.setFullYear(latestDate.getFullYear() - 10);
-                    break;
-                case 'all':
-                default:
-                    return fullData; // Wszystkie dane
-            }
-
-            return fullData.filter(d => new Date(d.date) >= startDate);
-        }
-
-        // Function to show/hide elements
-        function showElement(id, show = true) {
-            document.getElementById(id).classList.toggle('hidden', !show);
-        }
-
-        // Function to render menu
-        function renderMenu(node, parentElement, path = []) {
-            const isSelected = path.includes(node.column_id);
-            const button = document.createElement('button');
-            button.className = isSelected ? 'active' : '';
-            button.textContent = node.name;
-            button.title = node.name;
-            button.addEventListener('click', () => handleSelectCategory(node));
-            parentElement.appendChild(button);
-
-            if (node.children && isSelected) {
-                const childrenDiv = document.createElement('div');
-                childrenDiv.className = 'submenu';
-                node.children.forEach(child => renderMenu(child, childrenDiv, path));
-                parentElement.appendChild(childrenDiv);
-            }
-        }
-
-        // Function to handle category selection
-        function handleSelectCategory(node) {
-            selectedCategory = node;
-            const newPath = [...selectedPath];
-            const index = newPath.indexOf(node.column_id);
-            if (index === -1) {
-                newPath.push(node.column_id);
-            } else {
-                newPath.splice(index + 1);
-            }
-            selectedPath = newPath;
-            updateUI();
-        }
-
-        // Function to handle back button
-        function handleBack() {
-            if (selectedPath.length > 1) {
-                const newPath = selectedPath.slice(0, -1);
-                const parentId = newPath[newPath.length - 1];
-                const findNode = (node, id) => {
-                    if (node.column_id === id) return node;
-                    if (node.children) {
-                        for (let child of node.children) {
-                            const found = findNode(child, id);
-                            if (found) return found;
-                        }
-                    }
-                    return null;
-                };
-                selectedCategory = findNode(hierarchy, parentId);
-                selectedPath = newPath;
-                updateUI();
-            }
-        }
-
-        // Function to update UI
-        function updateUI() {
-            // Update menu
-            const menu = document.getElementById('menu');
-            menu.innerHTML = '<h2>Kategorie</h2>';
-            renderMenu(hierarchy, menu, selectedPath);
-
-            // Update chart title and controls
-            document.getElementById('chartTitle').textContent = selectedCategory.name;
-            showElement('chartControls', selectedPath.length > 1);
-
-            // Update chart
-            const fullChartData = data?.columns?.find(col => col.column_id === selectedCategory.column_id)?.data.map(d => ({
-                date: d.date,
-                value: d.value
-            })) || [];
-
-            const chartData = filterDataByTimeRange(fullChartData);
-
-            // Obliczanie sugerowanych granic osi Y
-            const values = chartData.map(d => d.value);
-            const minValue = Math.min(...values);
-            const maxValue = Math.max(...values);
-            const padding = (maxValue - minValue) * 0.1; // 10% paddingu
-
-            if (chart) chart.destroy();
-            const ctx = document.getElementById('chart').getContext('2d');
-            chart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: chartData.map(d => d.date),
-                    datasets: [{
-                        label: selectedCategory.name,
-                        data: chartData.map(d => d.value),
-                        borderColor: '#3182ce',
-                        fill: false,
-                        tension: 0.1,
-                        pointBackgroundColor: '#3182ce',
-                        pointBorderColor: '#ffffff',
-                        pointBorderWidth: 2,
-                        pointRadius: 4,
-                        pointHoverRadius: 6
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        x: {
-                            title: {
-                                display: true,
-                                text: 'Data',
-                                font: { size: 14, weight: '500' },
-                                color: '#2d3748'
-                            },
-                            ticks: { color: '#4a5568' }
-                        },
-                        y: {
-                            title: {
-                                display: true,
-                                text: 'Wartość (mln zł)',
-                                font: { size: 14, weight: '500' },
-                                color: '#2d3748'
-                            },
-                            ticks: { color: '#4a5568' },
-                            suggestedMin: minValue - padding,
-                            suggestedMax: maxValue + padding
-                        }
-                    },
-                    plugins: {
-                        legend: {
-                            display: true,
-                            labels: {
-                                font: { size: 14, weight: '500' },
-                                color: '#2d3748'
-                            }
-                        },
-                        tooltip: {
-                            enabled: true,
-                            backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                            titleColor: '#1a202c',
-                            bodyColor: '#1a202c',
-                            borderColor: '#e2e8f0',
-                            borderWidth: 1,
-                            cornerRadius: 8,
-                            padding: 12,
-                            titleFont: { size: 14, weight: '600' },
-                            bodyFont: { size: 13 },
-                            callbacks: {
-                                label: function(context) {
-                                    const value = context.parsed.y;
-                                    return `Wartość: ${value.toFixed(2)} mln zł`;
-                                },
-                                title: function(tooltipItems) {
-                                    return `Data: ${tooltipItems[0].label}`;
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-        }
-
-        // Load JSON via fetch
-        console.log("Próba wczytania pliku JSON przez fetch...");
-        fetch('am_data.json')
-            .then(response => {
-                console.log("Odpowiedź fetch:", response);
-                if (!response.ok) {
-                    throw new Error('Nie udało się wczytać pliku JSON: ' + response.statusText);
-                }
-                return response.json();
-            })
-            .then(jsonData => {
-                console.log("Wczytano dane JSON:", jsonData);
-                // Fix dates in the data
-                data = {
-                    columns: jsonData.columns.map(column => ({
-                        ...column,
-                        data: column.data.map(item => ({
-                            ...item,
-                            date: getDateFromPeriod(item.period)
-                        }))
-                    }))
-                };
-                updateUI();
-            })
-            .catch(err => {
-                console.error("Błąd podczas wczytywania JSON przez fetch:", err);
-                alert("Błąd podczas wczytywania pliku JSON: " + err.message);
-            });
-
-        // Handle time range selection
-        document.getElementById('timeRange').addEventListener('change', (event) => {
-            timeRange = event.target.value;
-            updateUI();
-        });
-
-        // Add event listener for back button
-        document.getElementById('backButton').addEventListener('click', handleBack);
-    </script>
+    loadData();
+  </script>
 </body>
 </html>
