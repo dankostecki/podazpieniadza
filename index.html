@@ -10,12 +10,6 @@
 <body>
     <div class="container">
         <h1>Podaż pieniądza w Polsce</h1>
-        <div class="mb-4">
-            <label>Jeśli dane nie wczytały się automatycznie, wybierz plik JSON (np. am_data.json):</label>
-            <input type="file" id="fileInput" accept=".json" />
-        </div>
-        <div id="error" class="error hidden"></div>
-        <div id="loading" class="loading">Wczytywanie danych...</div>
         <div class="flex-container">
             <div id="menu" class="menu"></div>
             <div class="chart-section">
@@ -25,7 +19,6 @@
                         <button id="backButton">Wstecz</button>
                     </div>
                     <div>
-                        <label for="timeRange">Zakres czasowy:</label>
                         <select id="timeRange">
                             <option value="all">Wszystko</option>
                             <option value="ytd">YTD</option>
@@ -50,7 +43,7 @@
         // Sprawdzenie, czy Chart.js się załadował
         if (typeof Chart === 'undefined') {
             console.error("Błąd: Chart.js nie załadował się poprawnie.");
-            displayError("Błąd: Chart.js nie załadował się poprawnie. Sprawdź połączenie z internetem.");
+            alert("Błąd: Chart.js nie załadował się poprawnie. Sprawdź połączenie z internetem.");
         } else {
             console.log("Chart.js załadowany poprawnie:", Chart.version);
         }
@@ -61,6 +54,7 @@
         });
         if (!stylesLoaded) {
             console.error("Błąd: Plik styles.css nie załadował się poprawnie.");
+            alert("Błąd: Plik styles.css nie załadował się poprawnie. Sprawdź, czy plik istnieje w repozytorium.");
         } else {
             console.log("Plik styles.css załadowany poprawnie.");
         }
@@ -172,14 +166,6 @@
             document.getElementById(id).classList.toggle('hidden', !show);
         }
 
-        // Function to display error
-        function displayError(message) {
-            const errorDiv = document.getElementById('error');
-            errorDiv.textContent = message;
-            showElement('error', true);
-            showElement('loading', false);
-        }
-
         // Function to render menu
         function renderMenu(node, parentElement, path = []) {
             const isSelected = path.includes(node.column_id);
@@ -252,6 +238,12 @@
 
             const chartData = filterDataByTimeRange(fullChartData);
 
+            // Obliczanie sugerowanych granic osi Y
+            const values = chartData.map(d => d.value);
+            const minValue = Math.min(...values);
+            const maxValue = Math.max(...values);
+            const padding = (maxValue - minValue) * 0.1; // 10% paddingu
+
             if (chart) chart.destroy();
             const ctx = document.getElementById('chart').getContext('2d');
             chart = new Chart(ctx, {
@@ -261,28 +253,60 @@
                     datasets: [{
                         label: selectedCategory.name,
                         data: chartData.map(d => d.value),
-                        borderColor: '#4a90e2',
+                        borderColor: '#3182ce',
                         fill: false,
-                        tension: 0.1
+                        tension: 0.1,
+                        pointBackgroundColor: '#3182ce',
+                        pointBorderColor: '#ffffff',
+                        pointBorderWidth: 2,
+                        pointRadius: 4,
+                        pointHoverRadius: 6
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     scales: {
-                        x: { title: { display: true, text: 'Data' } },
-                        y: { title: { display: true, text: 'Wartość (mln zł)' } }
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Data',
+                                font: { size: 14, weight: '500' },
+                                color: '#2d3748'
+                            },
+                            ticks: { color: '#4a5568' }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Wartość (mln zł)',
+                                font: { size: 14, weight: '500' },
+                                color: '#2d3748'
+                            },
+                            ticks: { color: '#4a5568' },
+                            suggestedMin: minValue - padding,
+                            suggestedMax: maxValue + padding
+                        }
                     },
                     plugins: {
-                        legend: { display: true },
+                        legend: {
+                            display: true,
+                            labels: {
+                                font: { size: 14, weight: '500' },
+                                color: '#2d3748'
+                            }
+                        },
                         tooltip: {
                             enabled: true,
-                            backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                            titleColor: '#2d3748',
-                            bodyColor: '#2d3748',
+                            backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                            titleColor: '#1a202c',
+                            bodyColor: '#1a202c',
                             borderColor: '#e2e8f0',
                             borderWidth: 1,
-                            cornerRadius: 6,
+                            cornerRadius: 8,
+                            padding: 12,
+                            titleFont: { size: 14, weight: '600' },
+                            bodyFont: { size: 13 },
                             callbacks: {
                                 label: function(context) {
                                     const value = context.parsed.y;
@@ -320,48 +344,12 @@
                         }))
                     }))
                 };
-                showElement('loading', false);
                 updateUI();
             })
             .catch(err => {
                 console.error("Błąd podczas wczytywania JSON przez fetch:", err);
-                displayError("Błąd podczas wczytywania pliku JSON: " + err.message);
+                alert("Błąd podczas wczytywania pliku JSON: " + err.message);
             });
-
-        // Handle manual file upload
-        document.getElementById('fileInput').addEventListener('change', (event) => {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            console.log("Wczytywanie pliku JSON przez input:", file.name);
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                try {
-                    const jsonData = JSON.parse(e.target.result);
-                    console.log("Wczytano dane JSON przez input:", jsonData);
-                    if (!jsonData.columns || !Array.isArray(jsonData.columns)) {
-                        throw new Error("Niepoprawna struktura pliku JSON. Oczekiwano obiektu z kluczem 'columns'.");
-                    }
-                    // Fix dates in the data
-                    data = {
-                        columns: jsonData.columns.map(column => ({
-                            ...column,
-                            data: column.data.map(item => ({
-                                ...item,
-                                date: getDateFromPeriod(item.period)
-                            }))
-                        }))
-                    };
-                    showElement('error', false);
-                    showElement('loading', false);
-                    updateUI();
-                } catch (err) {
-                    console.error("Błąd podczas wczytywania JSON przez input:", err);
-                    displayError("Błąd podczas wczytywania pliku JSON: " + err.message);
-                }
-            };
-            reader.readAsText(file);
-        });
 
         // Handle time range selection
         document.getElementById('timeRange').addEventListener('change', (event) => {
