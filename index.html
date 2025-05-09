@@ -64,9 +64,6 @@
       buildTree();
       setupControls();
       createChart();
-      // default select M3
-      const defaultNode = document.querySelector('[data-index="22"]');
-      if (defaultNode) defaultNode.click();
     }
 
     function setupControls() {
@@ -109,22 +106,17 @@
           const div = document.createElement('div'); div.classList.add('node');
           if (n.index !== null) {
             const cb = document.createElement('input'); cb.type = 'checkbox'; cb.dataset.index = n.index;
-            cb.addEventListener('click', e => {
-              e.stopPropagation();
-              if (cb.checked) selectedSeries.add(n.index);
-              else selectedSeries.delete(n.index);
-              renderChart();
-            });
+            cb.addEventListener('click', e => { e.stopPropagation(); if (cb.checked) selectedSeries.add(n.index); else selectedSeries.delete(n.index); renderChart(); });
             div.appendChild(cb);
           }
           const span = document.createElement('span'); span.textContent = n.name; div.appendChild(span);
           div.setAttribute('data-index', n.index);
           div.addEventListener('click', e => {
             e.stopPropagation();
-            // mark active
             document.querySelectorAll('.node').forEach(x=>x.classList.remove('active'));
             div.classList.add('active');
-            // ensure main series is selected
+            // reset selection on click, then select this series
+            selectedSeries.clear();
             if (n.index !== null) selectedSeries.add(n.index);
             renderChart();
           });
@@ -171,23 +163,8 @@
     function renderChart() {
       const fillOpt = document.getElementById('stackToggle').checked;
       chart.options.scales.y.stacked = fillOpt;
-
-      // Collect series to show
-      const indices = Array.from(selectedSeries);
-      // Sort to keep consistent order
-      indices.sort((a,b)=>a-b);
-
-      // Build datasets
-      const datasets = indices.map(i => ({
-        label: rawData.columns[i].column,
-        data: getData(i),
-        borderWidth: 2,
-        tension: 0.3,
-        fill: fillOpt ? 'origin' : false,
-        stack: fillOpt ? 'stack1' : undefined
-      }));
-
-      // Percentage info for all selected
+      const indices = Array.from(selectedSeries).sort((a,b)=>a-b);
+      const datasets = indices.map(i => ({ label: rawData.columns[i].column, data: getData(i), borderWidth:2, tension:0.3, fill: fillOpt?'origin':false, stack: fillOpt?'stack1':undefined }));
       const pct = document.getElementById('pctToggle').checked;
       const pctRR = document.getElementById('pctRRToggle').checked;
       const infoBox = document.getElementById('changeInfo');
@@ -200,18 +177,15 @@
           else {
             const ld = new Date(arr[arr.length-1].x);
             const ya = new Date(ld); ya.setFullYear(ld.getFullYear()-1);
-            const match = arr.find(p=>{const d=new Date(p.x);return d.getFullYear()===ya.getFullYear()&&d.getMonth()===ya.getMonth();});
-            prev = match?.y;
+            const match = arr.find(p=>{const d=new Date(p.x);return d.getFullYear()===ya.getFullYear()&&d.getMonth()===ya.getMonth();}); prev = match?.y;
           }
           return ((last-prev)/prev*100).toFixed(2);
         });
-        infoBox.textContent = (pct ? 'Δ %: ' : 'Δ r/r %: ') + results.join(' , ') + ' %';
+        infoBox.textContent = (pct?'Δ %: ':'Δ r/r %: ') + results.join(' , ') + ' %';
         infoBox.style.display = 'block';
       } else {
         infoBox.style.display = 'none';
       }
-
-      // Update chart
       chart.data.datasets = datasets;
       chart.update();
     }
