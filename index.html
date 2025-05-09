@@ -1,0 +1,294 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Podaż pieniądza w Polsce</title>
+    <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/recharts@2.12.7/umd/Recharts.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .tooltip {
+            background: white;
+            border: 1px solid #ccc;
+            padding: 10px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } = Recharts;
+
+        // Hierarchy definition
+        const hierarchy = {
+            name: "Pieniądz M3",
+            column_id: 23,
+            children: [
+                {
+                    name: "Pieniądz M2",
+                    column_id: 19,
+                    children: [
+                        {
+                            name: "Pieniądz M1",
+                            column_id: 11,
+                            children: [
+                                {
+                                    name: "Gotówka w obiegu (poza kasami MIF)",
+                                    column_id: 1,
+                                    children: [
+                                        { name: "Gotówka w obiegu (z kasami MIF)", column_id: 2 },
+                                        { name: "Gotówka w kasach MIF", column_id: 3 }
+                                    ]
+                                },
+                                {
+                                    name: "Depozyty bieżące",
+                                    column_id: 4,
+                                    children: [
+                                        { name: "Gospodarstwa domowe", column_id: 5 },
+                                        { name: "Pozostałe instytucje finansowe", column_id: 6 },
+                                        { name: "Przedsiębiorstwa niefinansowe", column_id: 7 },
+                                        { name: "Instytucje niekomercyjne", column_id: 8 },
+                                        { name: "Instytucje samorządowe", column_id: 9 },
+                                        { name: "Fundusze zabezpieczenia społecznego", column_id: 10 }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            name: "Depozyty do 2 lat",
+                            column_id: 12,
+                            children: [
+                                { name: "Gospodarstwa domowe", column_id: 13 },
+                                { name: "Pozostałe instytucje finansowe", column_id: 14 },
+                                { name: "Przedsiębiorstwa niefinansowe", column_id: 15 },
+                                { name: "Instytucje niekomercyjne", column_id: 16 },
+                                { name: "Instytucje samorządowe", column_id: 17 },
+                                { name: "Fundusze zabezpieczenia społecznego", column_id: 18 }
+                            ]
+                        }
+                    ]
+                },
+                { name: "Operacje z przyrzeczeniem odkupu", column_id: 20 },
+                { name: "Emisja dłużnych papierów wartościowych do 2 lat", column_id: 21 },
+                { name: "Emisja udziałów w funduszach rynku pieniężnego", column_id: 22 }
+            ]
+        };
+
+        // Function to generate dates from period codes
+        const getDateFromPeriod = (period) => {
+            const startDate = new Date(1996, 11, 31); // 1996-12-31 corresponds to period 35430
+            const months = Math.floor((period - 35430) / 30.42); // Approximate months
+            const date = new Date(startDate);
+            date.setMonth(startDate.getMonth() + months);
+            return date.toISOString().split("T")[0]; // YYYY-MM-DD
+        };
+
+        // Component to render hierarchical menu
+        const CategoryMenu = ({ node, onSelect, selectedPath }) => {
+            const isSelected = selectedPath.includes(node.column_id);
+            return (
+                <div className="ml-4">
+                    <button
+                        onClick={() => onSelect(node)}
+                        className={`text-left w-full py-1 px-2 rounded ${isSelected ? 'bg-blue-500 text-white' : 'hover:bg-gray-200'}`}
+                        title={node.name}
+                    >
+                        {node.name}
+                    </button>
+                    {node.children && isSelected && (
+                        <div className="ml-4">
+                            {node.children.map(child => (
+                                <CategoryMenu
+                                    key={child.column_id}
+                                    node={child}
+                                    onSelect={onSelect}
+                                    selectedPath={selectedPath}
+                                />
+                            ))}
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // Main App component
+        const App = () => {
+            const [data, setData] = useState(null);
+            const [selectedCategory, setSelectedCategory] = useState(hierarchy);
+            const [selectedPath, setSelectedPath] = useState([23]);
+            const [error, setError] = useState(null);
+
+            useEffect(() => {
+                fetch('am_data.json') // This will be served by GitHub Pages
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Nie udało się wczytać pliku JSON');
+                        }
+                        return response.json();
+                    })
+                    .then(jsonData => {
+                        // Fix dates in the data
+                        const fixedData = {
+                            columns: jsonData.columns.map(column => ({
+                                ...column,
+                                data: column.data.map(item => ({
+                                    ...item,
+                                    date: getDateFromPeriod(item.period)
+                                }))
+                            }))
+                        };
+                        setData(fixedData);
+                        setError(null);
+                    })
+                    .catch(err => {
+                        setError("Błąd podczas wczytywania pliku JSON: " + err.message);
+                        setData(null);
+                    });
+            }, []);
+
+            const handleSelectCategory = (node) => {
+                setSelectedCategory(node);
+                const newPath = [...selectedPath];
+                const index = newPath.indexOf(node.column_id);
+                if (index === -1) {
+                    newPath.push(node.column_id);
+                } else {
+                    newPath.splice(index + 1);
+                }
+                setSelectedPath(newPath);
+            };
+
+            const handleBack = () => {
+                if (selectedPath.length > 1) {
+                    const newPath = selectedPath.slice(0, -1);
+                    const parentId = newPath[newPath.length - 1];
+                    const findNode = (node, id) => {
+                        if (node.column_id === id) return node;
+                        if (node.children) {
+                            for (let child of node.children) {
+                                const found = findNode(child, id);
+                                if (found) return found;
+                            }
+                        }
+                        return null;
+                    };
+                    const parentNode = findNode(hierarchy, parentId);
+                    setSelectedCategory(parentNode);
+                    setSelectedPath(newPath);
+                }
+            };
+
+            const chartData = data?.columns?.find(col => col.column_id === selectedCategory.column_id)?.data.map(d => ({
+                date: d.date,
+                value: d.value
+            })) || [];
+
+            return (
+                <div className="container mx-auto p-4">
+                    <h1 className="text-2xl font-bold mb-4">Podaż pieniądza w Polsce</h1>
+                    {error && (
+                        <div className="bg-red-100 text-red-700 p-4 rounded mb-4">
+                            {error}
+                        </div>
+                    )}
+                    {!data && !error && (
+                        <div className="bg-yellow-100 text-yellow-700 p-4 rounded mb-4">
+                            Wczytywanie danych...
+                        </div>
+                    )}
+                    {data && (
+                        <div className="flex flex-col md:flex-row">
+                            <div className="w-full md:w-1/4 bg-white p-4 rounded shadow">
+                                <h2 className="text-lg font-semibold mb-2">Kategorie</h2>
+                                <CategoryMenu
+                                    node={hierarchy}
+                                    onSelect={handleSelectCategory}
+                                    selectedPath={selectedPath}
+                                />
+                            </div>
+                            <div className="w-full md:w-3/4 bg-white p-4 rounded shadow mt-4 md:mt-0 md:ml-4">
+                                <h2 className="text-lg font-semibold mb-2">{selectedCategory.name}</h2>
+                                {selectedPath.length > 1 && (
+                                    <button
+                                        onClick={handleBack}
+                                        className="mb-4 bg-gray-500 text-white py-1 px-2 rounded hover:bg-gray-600"
+                                    >
+                                        Wstecz
+                                    </button>
+                                )}
+                                {chartData.length > 0 ? (
+                                    <LineChart width={600} height={400} data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                                        <CartesianGrid strokeDasharray="3 3" />
+                                        <XAxis dataKey="date" />
+                                        <YAxis />
+                                        <Tooltip content={({ payload, label }) => (
+                                            <div className="tooltip">
+                                                <p>Data: {label}</p>
+                                                <p>Wartość: {payload?.[0]?.value?.toFixed(2)} mln zł</p>
+                                            </div>
+                                        )} />
+                                        <Legend />
+                                        <Line type="monotone" dataKey="value" stroke="#8884d8" name={selectedCategory.name} />
+                                    </LineChart>
+                                ) : (
+                                    <p className="text-gray-500">Brak danych dla wybranej kategorii.</p>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                    <footer className="mt-4 text-sm text-gray-600">
+                        <p>Dane: Narodowy Bank Polski. M3 obejmuje M2, operacje repo, papiery dłużne i fundusze rynku pieniężnego.</p>
+                    </footer>
+                </div>
+            );
+        };
+
+        // Render the app
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.22.9/babel.min.js"></script>
+</body>
+</html>
