@@ -17,12 +17,11 @@
     #sidebar { width: 300px; background: #fff; padding: 1rem; box-shadow: 2px 0 4px rgba(0,0,0,0.1); overflow-y: auto; }
     #sidebar ul { list-style: none; padding: 0; margin: 0; }
     #sidebar li { margin: 0.3rem 0; }
-    #sidebar .node { display: flex; align-items: center; cursor: pointer; border-radius: 6px; padding: 0.4rem 0.6rem; }
+    #sidebar .node { cursor: pointer; border-radius: 6px; padding: 0.4rem 0.6rem; }
     #sidebar .node:hover { background: #e6f0ff; }
-    #sidebar .node.active { background: #cfe2ff; }
-    #sidebar .category { font-weight: 600; }
-    .toggle { margin-right: 0.5rem; font-size: 0.8rem; user-select: none; }
-    #sidebar ul ul { padding-left: 1rem; display: none; }
+    #sidebar .node.active > span { font-weight: 600; }
+    #sidebar .category > span { font-weight: 600; }
+    #sidebar ul ul { padding-left: 1rem; display: block; }
     #main { flex: 1; padding: 1rem; display: flex; flex-direction: column; }
     .controls { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
     .controls button { flex: 1; padding: 0.5rem; border-radius: 8px; border: 1px solid #ddd; background: #fff; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.05); font-size: 0.9rem; }
@@ -45,7 +44,7 @@
         <button data-range="1Y">1 rok</button>
         <button data-range="5Y">5 lat</button>
         <button data-range="10Y">10 lat</button>
-        <button data-range="ALL" class="active">Cały okres</button>
+        <button data-range="ALL">Cały okres</button>
       </div>
       <div class="chart-container">
         <canvas id="moneyChart"></canvas>
@@ -64,22 +63,25 @@
           updateChart();
         });
       });
+      // default range
+      document.querySelector('button[data-range="ALL"]').classList.add('active');
       createChart();
+      // default selection: M3
+      const defaultNode = document.querySelector('[data-index="22"]');
+      if (defaultNode) defaultNode.click();
     }
 
     function buildTree() {
       const cols = rawData.columns;
       const treeData = [
-        {
-          name: 'Pieniądz M3', index: 22, children: [
-            { name: 'Pieniądz M3 (suma)', index: 22 },
-            { name: 'Dodatkowe komponenty M3', children: [
+        { name: 'Pieniądz M3', index: 22, children: [
+            { name: 'Dodatkowe komponenty M3', index: null, children: [
               { name: cols[19].column, index: 19 },
               { name: cols[20].column, index: 20 },
               { name: cols[21].column, index: 21 }
             ]},
-            { name: 'Pieniądz M2 (suma)', index: 18, children: [
-              { name: 'Depozyty i inne zobowiązania do 2 lat włącznie', children: [
+            { name: 'Pieniądz M2', index: 18, children: [
+              { name: 'Depozyty do 2 lat', index: null, children: [
                 { name: cols[12].column, index: 12 },
                 { name: cols[13].column, index: 13 },
                 { name: cols[14].column, index: 14 },
@@ -87,8 +89,8 @@
                 { name: cols[16].column, index: 16 },
                 { name: cols[17].column, index: 17 }
               ]},
-              { name: 'Pieniądz M1 (suma)', index: 10, children: [
-                { name: 'Depozyty i inne zobowiązania bieżące', children: [
+              { name: 'Pieniądz M1', index: 10, children: [
+                { name: 'Depozyty bieżące', index: null, children: [
                   { name: cols[4].column, index: 4 },
                   { name: cols[5].column, index: 5 },
                   { name: cols[6].column, index: 6 },
@@ -99,51 +101,34 @@
                 { name: cols[0].column, index: 0 }
               ]}
             ]}
-          ]
-        }
+          ]}
       ];
-
       const tree = document.getElementById('treeMenu');
-      function render(nodes, parentUl) {
+
+      function render(nodes, parent) {
         nodes.forEach(node => {
           const li = document.createElement('li');
           const div = document.createElement('div');
           div.classList.add('node');
-          if (node.index !== undefined) div.dataset.index = node.index;
-
-          if (node.children) {
-            const toggle = document.createElement('span');
-            toggle.textContent = '+';
-            toggle.classList.add('toggle');
-            div.appendChild(toggle);
-          } else {
-            const cb = document.createElement('input');
-            cb.type = 'checkbox';
-            cb.dataset.index = node.index;
-            cb.addEventListener('change', () => updateChart());
-            div.appendChild(cb);
-          }
+          if (node.index !== null) div.dataset.index = node.index;
+          if (node.children) div.classList.add('category');
 
           const span = document.createElement('span');
           span.textContent = node.name;
-          span.style.marginLeft = '4px';
           div.appendChild(span);
 
           div.addEventListener('click', e => {
             e.stopPropagation();
-            if (node.children) {
-              const ul = div.nextSibling;
-              ul.style.display = ul.style.display === 'block' ? 'none' : 'block';
-              toggle.textContent = ul.style.display === 'block' ? '−' : '+';
-            }
+            document.querySelectorAll('.node').forEach(n => n.classList.remove('active'));
+            div.classList.add('active');
+            if (node.index !== null) updateChart();
           });
 
           li.appendChild(div);
-          parentUl.appendChild(li);
+          parent.appendChild(li);
 
           if (node.children) {
             const ul = document.createElement('ul');
-            ul.style.display = 'none';
             li.appendChild(ul);
             render(node.children, ul);
           }
@@ -156,39 +141,34 @@
     function createChart() {
       const ctx = document.getElementById('moneyChart').getContext('2d');
       chart = new Chart(ctx, {
-        type: 'line', data: { labels: [], datasets: [] },
+        type: 'line',
+        data: { labels: [], datasets: [] },
         options: {
-          responsive: true, animation: { duration: 300 },
+          responsive: true,
           interaction: { mode: 'index', intersect: false },
           plugins: { tooltip: { enabled: true } },
-          scales: { x: { type: 'time', time: { unit: 'month' }}}
+          scales: { x: { type: 'time', time: { unit: 'month' }} }
         }
       });
     }
 
     function updateChart() {
-      const range = document.querySelector('#rangeButtons button.active').dataset.range;
-      const now = new Date(); let startDate;
+      const activeNode = document.querySelector('.node.active');
+      if (!activeNode || !activeNode.dataset.index) return;
+      const idx = parseInt(activeNode.dataset.index, 10);
+      const col = rawData.columns[idx];
+      const range = document.querySelector('#rangeButtons .active').dataset.range;
+      const now = new Date(); let startDate = null;
       switch (range) {
         case 'YTD': startDate = new Date(now.getFullYear(), 0, 1); break;
-        case '1Y': startDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()); break;
-        case '5Y': startDate = new Date(now.getFullYear() - 5, now.getMonth(), now.getDate()); break;
-        case '10Y': startDate = new Date(now.getFullYear() - 10, now.getMonth(), now.getDate()); break;
-        default: startDate = null;
+        case '1Y': startDate = new Date(now.getFullYear()-1, now.getMonth(), now.getDate()); break;
+        case '5Y': startDate = new Date(now.getFullYear()-5, now.getMonth(), now.getDate()); break;
+        case '10Y': startDate = new Date(now.getFullYear()-10, now.getMonth(), now.getDate()); break;
       }
-      const checks = Array.from(document.querySelectorAll('#treeMenu input[type="checkbox"]:checked'));
-      if (checks.length === 0) return;
-      chart.data.datasets = [];
-      chart.data.labels = [];
-      checks.forEach(cb => {
-        const idx = cb.dataset.index;
-        const col = rawData.columns[idx];
-        let data = col.data;
-        if (startDate) data = data.filter(d => new Date(d.date) >= startDate);
-        const labels = data.map(d => d.date);
-        if (chart.data.labels.length < labels.length) chart.data.labels = labels;
-        chart.data.datasets.push({ label: col.column, data: data.map(d => d.value), borderWidth: 2, tension: 0.3 });
-      });
+      let data = col.data;
+      if (startDate) data = data.filter(d => new Date(d.date) >= startDate);
+      chart.data.labels = data.map(d => d.date);
+      chart.data.datasets = [{ label: col.column, data: data.map(d => d.value), borderWidth: 2, tension: 0.3 }];
       chart.update();
     }
 
