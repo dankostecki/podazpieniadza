@@ -22,9 +22,12 @@
     #sidebar .node.active > span { font-weight: 600; }
     #sidebar ul ul { padding-left: 1rem; display: block; }
     #main { flex: 1; padding: 1rem; display: flex; flex-direction: column; }
-    .controls { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
-    .controls button { flex: 1; padding: 0.5rem; border-radius: 8px; border: 1px solid #ddd; background: #fff; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.05); font-size: 0.9rem; }
+    .controls { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem; }
+    .controls button, .controls label { flex: 1; text-align: center; }
+    .controls button { padding: 0.5rem; border-radius: 8px; border: 1px solid #ddd; background: #fff; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.05); font-size: 0.9rem; }
     .controls button.active { background: #007bff; color: #fff; border-color: #007bff; }
+    .controls label { display: flex; align-items: center; justify-content: center; font-size: 0.9rem; cursor: pointer; }
+    .controls input[type="checkbox"] { margin-left: 0.5rem; }
     .chart-container { flex: 1; background: #fff; padding: 1rem; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
     h1 { margin: 0; font-weight: 600; font-size: 1.5rem; }
     .checkbox { margin-right: 0.5rem; }
@@ -45,6 +48,7 @@
         <button data-range="5Y">5 lat</button>
         <button data-range="10Y">10 lat</button>
         <button data-range="ALL">Cały okres</button>
+        <label>Stacked<input type="checkbox" id="stackToggle"></label>
       </div>
       <div class="chart-container">
         <canvas id="moneyChart"></canvas>
@@ -56,7 +60,13 @@
     async function loadData() {
       rawData = await fetch('am_data.json').then(res => res.json());
       buildTree();
-      // Range buttons
+      setupControls();
+      createChart();
+      // Default: click M3 node
+      setTimeout(() => { document.querySelector('[data-index="22"]').click(); }, 100);
+    }
+
+    function setupControls() {
       document.querySelectorAll('#rangeButtons button').forEach(btn => {
         btn.addEventListener('click', () => {
           document.querySelectorAll('#rangeButtons button').forEach(b => b.classList.remove('active'));
@@ -65,9 +75,13 @@
         });
       });
       document.querySelector('button[data-range="ALL"]').classList.add('active');
-      createChart();
-      // Default: show M3
-      setTimeout(() => { document.querySelector('[data-index="22"]').click(); }, 100);
+      document.getElementById('stackToggle').addEventListener('change', () => {
+        chart.options.scales = chart.options.scales || {};
+        chart.options.scales.y = { stacked: !!document.getElementById('stackToggle').checked };
+        // set fill for stacked
+        chart.data.datasets.forEach(ds => ds.fill = document.getElementById('stackToggle').checked ? 'origin' : false);
+        chart.update();
+      });
     }
 
     function buildTree() {
@@ -108,9 +122,11 @@
           const li = document.createElement('li');
           const div = document.createElement('div');
           div.classList.add('node');
+          // Checkbox for selectable nodes
           if (node.index !== null) {
             const cb = document.createElement('input');
             cb.type = 'checkbox'; cb.classList.add('checkbox'); cb.dataset.index = node.index;
+            cb.addEventListener('click', e => e.stopPropagation());
             cb.addEventListener('change', updateOverlay);
             div.appendChild(cb);
           }
@@ -120,7 +136,7 @@
             e.stopPropagation();
             document.querySelectorAll('.node').forEach(n => n.classList.remove('active'));
             div.classList.add('active');
-            if (node.index !== null) showActiveSeries();
+            showActiveSeries();
           });
           li.appendChild(div); parent.appendChild(li);
           if (node.children) {
@@ -136,8 +152,8 @@
       const ctx = document.getElementById('moneyChart').getContext('2d');
       chart = new Chart(ctx, {
         type: 'line', data: { datasets: [] }, options: {
-          responsive: true, interaction: { mode: 'index', intersect: false },
-          plugins: { tooltip: { enabled: true } }, scales: { x: { type: 'time', time: { unit: 'month' }}}
+          responsive: true, interaction: { mode: 'index', intersect: false }, plugins: { tooltip: { enabled: true } },
+          scales: { x: { type: 'time', time: { unit: 'month' }}, y: { stacked: false }}
         }
       });
     }
@@ -161,24 +177,22 @@
       if (!active || !active.querySelector('input')) return;
       const idx = parseInt(active.querySelector('input').dataset.index, 10);
       chart.data.datasets = [{ label: rawData.columns[idx].column, data: getFilteredData(idx), borderWidth: 2, tension: 0.3, fill: false }];
-      // uncheck all overlays
-      document.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = false);
+      // clear overlays
+      document.querySelectorAll('#treeMenu input[type="checkbox"]').forEach(cb => cb.checked = false);
       chart.update();
     }
 
     function updateOverlay() {
       const datasets = [];
-      // base: active series
       const active = document.querySelector('.node.active');
       if (active && active.querySelector('input')) {
         const idx0 = parseInt(active.querySelector('input').dataset.index, 10);
-        datasets.push({ label: rawData.columns[idx0].column, data: getFilteredData(idx0), borderWidth: 2, tension: 0.3, fill: false });
+        datasets.push({ label: rawData.columns[idx0].column, data: getFilteredData(idx0), borderWidth: 2, tension: 0.3, fill: document.getElementById('stackToggle').checked ? 'origin' : false });
       }
-      // overlays
-      document.querySelectorAll('input[type=checkbox]:checked').forEach(cb => {
+      document.querySelectorAll('#treeMenu input[type="checkbox"]:checked').forEach(cb => {
         const idx = parseInt(cb.dataset.index, 10);
         if (!active || idx !== parseInt(active.querySelector('input').dataset.index,10)) {
-          datasets.push({ label: rawData.columns[idx].column, data: getFilteredData(idx), borderWidth: 2, tension: 0.3, fill: false });
+          datasets.push({ label: rawData.columns[idx].column, data: getFilteredData(idx), borderWidth: 2, tension: 0.3, fill: document.getElementById('stackToggle').checked ? 'origin' : false });
         }
       });
       chart.data.datasets = datasets;
