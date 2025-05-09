@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
 
 /* Reset i podstawowe style */
 * {
@@ -11,89 +11,45 @@ body {
     font-family: 'Poppins', sans-serif;
     font-size: 16px;
     line-height: 1.6;
-    color: #2d3748;
-    background-color: #edf2f7;
+    color: #333333;
+    background-color: #f7fafc;
 }
 
 /* Kontener główny */
 .container {
-    max-width: 1280px;
+    max-width: 1400px;
     margin: 0 auto;
-    padding: 24px;
+    padding: 32px;
+    background-color: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.05);
+    min-height: 100vh;
 }
 
 /* Nagłówki */
 h1 {
-    font-size: 32px;
-    font-weight: 600;
+    font-size: 36px;
+    font-weight: 700;
     color: #1a202c;
-    margin-bottom: 24px;
+    margin-bottom: 32px;
+    text-align: center;
 }
 
 h2 {
-    font-size: 22px;
-    font-weight: 500;
+    font-size: 24px;
+    font-weight: 600;
     color: #1a202c;
-    margin-bottom: 16px;
-}
-
-/* Input i select */
-input[type="file"],
-select {
-    font-family: 'Poppins', sans-serif;
-    font-size: 14px;
-    padding: 10px;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    width: 100%;
-    max-width: 320px;
-    margin-top: 8px;
-    background-color: #fff;
-    transition: border-color 0.2s ease;
-}
-
-input[type="file"]:focus,
-select:focus {
-    outline: none;
-    border-color: #4a90e2;
-}
-
-label {
-    font-size: 14px;
-    color: #4a5568;
-    display: block;
-    margin-bottom: 4px;
-}
-
-/* Komunikaty o błędach i ładowaniu */
-.error,
-.loading {
-    padding: 16px;
-    border-radius: 6px;
-    margin-bottom: 24px;
-    font-size: 14px;
-}
-
-.error {
-    background-color: #fef6f6;
-    color: #e53e3e;
-    border: 1px solid #feb2b2;
-}
-
-.loading {
-    background-color: #fefcbf;
-    color: #d69e2e;
-    border: 1px solid #f6e05e;
+    margin-bottom: 20px;
 }
 
 /* Układ flex */
 .flex-container {
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    gap: 32px;
 }
 
-@media (min-width: 768px) {
+@media (min-width: 1024px) {
     .flex-container {
         flex-direction: row;
     }
@@ -102,35 +58,38 @@ label {
 /* Menu */
 .menu {
     flex: 1;
-    background-color: #ffffff;
+    background-color: #f9fafb;
     padding: 24px;
-    border-radius: 8px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    border-radius: 10px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
 .menu button {
     display: block;
     width: 100%;
     text-align: left;
-    padding: 10px 14px;
+    padding: 12px 16px;
     margin: 4px 0;
     background-color: transparent;
     border: none;
-    border-radius: 6px;
+    border-radius: 8px;
     font-family: 'Poppins', sans-serif;
-    font-size: 14px;
+    font-size: 15px;
+    font-weight: 500;
     color: #2d3748;
     cursor: pointer;
-    transition: background-color 0.2s ease, color 0.2s ease;
+    transition: background-color 0.3s ease, color 0.3s ease, transform 0.1s ease;
 }
 
 .menu button:hover {
-    background-color: #edf2f7;
+    background-color: #e2e8f0;
+    transform: translateX(4px);
 }
 
 .menu button.active {
-    background-color: #4a90e2;
+    background-color: #3182ce;
     color: #ffffff;
+    box-shadow: 0 2px 8px rgba(49, 130, 206, 0.2);
 }
 
 .menu .submenu {
@@ -140,52 +99,65 @@ label {
 /* Sekcja wykresu */
 .chart-section {
     flex: 3;
-    background-color: #ffffff;
+    background-color: #f9fafb;
     padding: 24px;
-    border-radius: 8px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-    height: fit-content; /* Zapobiega rozciąganiu */
+    border-radius: 10px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
 .chart-controls {
     display: flex;
     flex-wrap: wrap;
-    gap: 12px;
-    margin-bottom: 20px;
+    gap: 16px;
+    margin-bottom: 24px;
     align-items: center;
 }
 
-.chart-controls button {
-    background-color: #718096;
+.chart-controls button,
+.chart-controls select {
+    background-color: #4a5568;
     color: #ffffff;
-    padding: 8px 16px;
+    padding: 10px 20px;
     border: none;
-    border-radius: 6px;
+    border-radius: 8px;
     font-family: 'Poppins', sans-serif;
     font-size: 14px;
+    font-weight: 500;
     cursor: pointer;
-    transition: background-color 0.2s ease;
+    transition: background-color 0.3s ease, transform 0.1s ease;
 }
 
-.chart-controls button:hover {
-    background-color: #5a6a82;
+.chart-controls select {
+    background-color: #5a667a;
+}
+
+.chart-controls button:hover,
+.chart-controls select:hover {
+    background-color: #2d3748;
+    transform: translateY(-1px);
+}
+
+.chart-controls button:active,
+.chart-controls select:active {
+    transform: translateY(0);
 }
 
 /* Wykres */
 .chart-wrapper {
     position: relative;
-    height: 400px; /* Stała wysokość dla kontenera wykresu */
+    height: 500px; /* Zwiększona wysokość dla lepszych proporcji */
 }
 
 #chart {
-    height: 400px !important;
+    height: 500px !important;
     width: 100% !important;
 }
 
 /* Stopka */
 footer {
-    margin-top: 24px;
-    font-size: 12px;
+    margin-top: 32px;
+    font-size: 13px;
+    font-weight: 400;
     color: #718096;
     text-align: center;
 }
